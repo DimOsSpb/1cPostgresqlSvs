@@ -239,7 +239,7 @@ DISPATCHER.startStage(TasksID.Main.id,TasksID.Main.title, StageType.Main)
 ## 1.3 Версия Postgresql - это важно. работать с архивами надо в рамках совместимых для этого версиях, лучше в одной. Эту информацию будем писать в имя архива
 
 try:
-    process = subprocess.run([PRG.sql_username, '-V'], stdout=subprocess.PIPE)
+    process = subprocess.run(['postgres', '-V'], stdout=subprocess.PIPE)
     if process.returncode:
         raise Exception(str(process.stderr))
     output = process.stdout.decode('utf-8')
