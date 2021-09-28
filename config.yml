@@ -1,0 +1,56 @@
+Description: Service 1cPGSQL
+Host: 192.168.0.29
+SQLUserName: postgres
+1cServiceName: srv1cv83
+BackUp:
+  Dir: /mnt/pg_arch/ARCH
+Do:
+  - BackUp-SQL
+  - Reindex-SQL
+  - Vacuum-SQL
+  - BackUp-1cExtFiles
+  - Clean-1cCache
+  # - Restart-1c
+  - FSCheck
+  # - Reboot
+BackUp-SQL:
+  Depth: 1 #Days
+  KeepQuantity: 5 #Archives
+  RestoreManualTmpt: RestSQLManl.tmpt 
+  RestoreManualFile: README.MD
+BackUp-Bases:
+  - "GILV"
+  # - "%ERP%"
+  # - "%BUH%"
+  # - "%UPP%"
+  # - "%ZUP%"
+  # - "%ARCH%"
+  - "%KA-%"  
+BackUp-1cExtFiles:
+  # Dir: /mnt/pg_arch/ARCH
+  1cExtFilesDir: /mnt/1cdata
+  Depth: 60 #Days
+  RestoreManualTmpt: RestFilesManl.tmpt 
+  RestoreManualFile: README.MD
+
+Clean-1cCache:
+  CacheDir: /home/usr1cv8/.1cv8/1C/1cv8/reg_1541
+  LogDirName: 1Cv8Log
+  LogArchDirName: 1cLogs
+  LogDepth: 90        #Days
+  LogSizeMax: 1000    #MB
+  KeepDepth: 365      #Days
+  KeepSizeMax: 6000   #MB
+
+FSCheck:
+  MaxDiskSpaceUsage: 60 #%
+
+
+log:
+  file: "/opt/serv/serv.log"
+  con: true 
+  telegram:
+    token: "1961222724:AAHxx3ER1e-aYnkimLVMASpd83z21QcssWI"
+    channel_id: "-1001401425125"
+       
+
