@@ -50,7 +50,7 @@ log:
   file: "/opt/serv/serv.log"
   con: true 
   telegram:
-    token: "1961222724:AAHxx3ER1e-aYnkimLVMASpd83z21QcssWI"
-    channel_id: "-1001401425125"
+    token: 
+    channel_id: 
        
 
