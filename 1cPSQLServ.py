@@ -68,15 +68,16 @@ class Programm:
         self.rest_sql_man = ""
         self.rest_files_man_tmp = ""
         self.rest_files_man = ""
-        self.CacheDir = ""
-        self.LogDirName = "1Cv8Log"
-        self.LogArchDirName = "Logs"
-        self.LogDepth = None #Days
-        self.LogSizeMax = None    #GB
-        self.KeepDepth = None #Days
-        self.KeepSizeMax = None    #GB
-        self.MaxDiskSpaceUsage = None
-        self.RebootTimeOut = None
+        self.cache_dir = ""
+        self.log_dir_name = "1Cv8Log"
+        self.log_arch_dir_name = "Logs"
+        self.log_depth = None #Days
+        self.log_size_max = None    #GB
+        self.keep_depth = None #Days
+        self.keep_size_max = None    #GB
+        self.disk_space_usage_warn = None
+        self.disk_space_usage_err = None
+        self.reboot_time_out = None
 
     def isAlreadyRunning(self):
         self.lockfile = open(os.path.realpath(__file__), 'r')
@@ -114,24 +115,26 @@ def get_size(start_path='.'):
             total_size += stat.st_size
     return total_size
 
-def checkFS(max_percent: int, top_size_lines: int = 3):
+def checkFS(max_percent_warn: int, max_percent_err: int, top_size_lines: int = 3):
     process = subprocess.run(['df'], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     output = process.stdout.decode('utf-8')   
     df_n = re.findall('\d\s*(\d*)% \/', output)
     df_f = re.findall('\d\s*\d*%\s(\/.*?)\\n', output)
     vols = []
+    err = False
     for i in range(len(df_n)):
         n = int(df_n[i]) 
-        if n > max_percent:       
+        if n > max_percent_warn:       
             data = {}
             data['name'] =  df_f[i]
             data['value'] = n
             vols.append(data)
+            if n > max_percent_err:       
+                err = True
     if len(vols) > 0:
         process = subprocess.run(['/bin/sh','-c','du -aSxh / | sort -h -r | head -n '+str(top_size_lines)], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)   
         output = process.stdout.decode('utf-8')   
-        result = False
-        return result, vols, output
+        return 2 if err else 1, vols, output
     else:
         return True, [], ""
 
@@ -215,27 +218,30 @@ try:
     PRG.rest_files_man_tmp = cfg['BackUp-1cExtFiles']['RestoreManualTmpt']
     PRG.rest_files_man = cfg['BackUp-1cExtFiles']['RestoreManualFile']
 
-    PRG.CacheDir = cfg['Clean-1cCache']['CacheDir']
-    PRG.LogDirName = cfg['Clean-1cCache']['LogDirName']
-    PRG.LogArchDirName = cfg['Clean-1cCache']['LogArchDirName']
-    PRG.LogDepth = cfg['Clean-1cCache']['LogDepth']
-    if type(PRG.LogDepth) is not int:
-            PRG.LogDepth = 90    # Days
-    PRG.LogSizeMax = cfg['Clean-1cCache']['LogSizeMax']
-    if type(PRG.LogSizeMax) is not int:
-            PRG.LogSizeMax = 1000      # MB    
-    PRG.KeepDepth = cfg['Clean-1cCache']['KeepDepth']
-    if type(PRG.KeepDepth) is not int:
-            PRG.KeepDepth = 365    # Days
-    PRG.KeepSizeMax = cfg['Clean-1cCache']['KeepSizeMax']
-    if type(PRG.KeepSizeMax) is not int:
-            PRG.KeepSizeMax = 6000      # MB 
-    PRG.MaxDiskSpaceUsage = cfg['FSCheck']['MaxDiskSpaceUsage']
-    if type(PRG.MaxDiskSpaceUsage) is not int:
-            PRG.MaxDiskSpaceUsage = 80      # %
-    PRG.RebootTimeOut = cfg['Reboot']['TimeOut']
-    if type(PRG.RebootTimeOut) is not int:
-            PRG.RebootTimeOut = 2      # min
+    PRG.cache_dir = cfg['Clean-1cCache']['CacheDir']
+    PRG.log_dir_name = cfg['Clean-1cCache']['LogDirName']
+    PRG.log_arch_dir_name = cfg['Clean-1cCache']['LogArchDirName']
+    PRG.log_depth = cfg['Clean-1cCache']['LogDepth']
+    if type(PRG.log_depth) is not int:
+            PRG.log_depth = 90    # Days
+    PRG.log_size_max = cfg['Clean-1cCache']['LogSizeMax']
+    if type(PRG.log_size_max) is not int:
+            PRG.log_size_max = 1000      # MB    
+    PRG.keep_depth = cfg['Clean-1cCache']['KeepDepth']
+    if type(PRG.keep_depth) is not int:
+            PRG.keep_depth = 365    # Days
+    PRG.keep_size_max = cfg['Clean-1cCache']['KeepSizeMax']
+    if type(PRG.keep_size_max) is not int:
+            PRG.keep_size_max = 6000      # MB 
+    PRG.disk_space_usage_warn = cfg['FSCheck']['DiskSpaceUsageWarn']
+    if type(PRG.disk_space_usage_warn) is not int:
+            PRG.disk_space_usage_warn = 75      # %
+    PRG.disk_space_usage_err = cfg['FSCheck']['DiskSpaceUsageErr']
+    if type(PRG.disk_space_usage_err) is not int:
+            PRG.disk_space_usage_err = 90      # %
+    PRG.reboot_time_out = cfg['Reboot']['TimeOut']
+    if type(PRG.reboot_time_out) is not int:
+            PRG.reboot_time_out = 2      # min
 except Exception as e:
     PRG.error('Configuration error',e)
 
@@ -461,7 +467,7 @@ if critical_for_1c_tasks_present:
             DISPATCHER.startStage(TasksID.Clean1cCache.id, TasksID.Clean1cCache.title, StageType.Task)
             try:
                 # 1CV8Clst.lst содержит id баз - это имена каталогов для чистки
-                lst = os.path.join(PRG.CacheDir, '1CV8Clst.lst') 
+                lst = os.path.join(PRG.cache_dir, '1CV8Clst.lst') 
                 with open(lst, "r") as f:
                     data = f.read()
                 s1 = data.replace('\n','')
@@ -477,20 +483,20 @@ if critical_for_1c_tasks_present:
                     bases.append(base)
                 # Очистим каталоги всех баз...    
                 now = time.time()
-                s_time = time.time() - PRG.LogDepth * 86400
-                k_time = time.time() - PRG.KeepDepth * 86400
+                s_time = time.time() - PRG.log_depth * 86400
+                k_time = time.time() - PRG.keep_depth * 86400
                 clean_log = False
                 for l in bases:
                     DISPATCHER.startStage(l['name'], l['name'], StageType.TaskItem, in_line=True)
                     try:                    
-                        d = os.path.join(PRG.CacheDir, l['id']) 
-                        d = os.path.join(d, PRG.LogDirName) 
+                        d = os.path.join(PRG.cache_dir, l['id']) 
+                        d = os.path.join(d, PRG.log_dir_name) 
                         if os.path.isdir(d):
                             # Сожраним удаляемый журнал...
                             log_arch_dir = os.path.join(PRG.backup_dir, l['name'])
                             if not os.path.exists(log_arch_dir):
                                 os.makedirs(log_arch_dir)
-                            log_arch_dir = os.path.join(log_arch_dir, PRG.LogArchDirName)
+                            log_arch_dir = os.path.join(log_arch_dir, PRG.log_arch_dir_name)
                             if not os.path.exists(log_arch_dir):
                                 os.makedirs(log_arch_dir)
                             time_stamp = datetime.datetime.now().strftime("%d%m%Y%H%M_1cLog")
@@ -498,7 +504,7 @@ if critical_for_1c_tasks_present:
 
                             dir_time = os.stat(d).st_mtime 
                             dir_size = get_size(d)
-                            if dir_time < s_time or dir_size >= PRG.LogSizeMax*1048576:  # Megabytes -> Bytes
+                            if dir_time < s_time or dir_size >= PRG.log_size_max*1048576:  # Megabytes -> Bytes
                                 clean_log = True
                             if clean_log:
                                 # tar -cvf archive.tar.gz /path/to/files
@@ -539,9 +545,11 @@ if critical_for_1c_tasks_present:
 if TasksID.FSCheck.id in PRG.tasks:
     DISPATCHER.startStage(TasksID.FSCheck.id, TasksID.FSCheck.title, StageType.Check, in_line=True)
     try:
-        res, vols, info = checkFS(PRG.MaxDiskSpaceUsage,1)
-        if not res:
+        res, vols, info = checkFS(PRG.disk_space_usage_warn, PRG.disk_space_usage_err, 1)
+        if res == 1:
             DISPATCHER.warning("volume: '{}' - used more than {}%, max -> {}".format(vols[0]['name'], vols[0]['value'], info.replace('\n','')))
+        elif res == 2:
+            DISPATCHER.error("volume: '{}' - used more than {}%, max -> {}".format(vols[0]['name'], vols[0]['value'], info.replace('\n','')))
     except Exception as error:
         DISPATCHER.error(can_t + TasksID.FSCheck.title, error)
     DISPATCHER.finishStage(TasksID.FSCheck.id)
@@ -577,10 +585,10 @@ if TasksID.Reboot.id in PRG.tasks:
             DISPATCHER.finishStage(AdaptTasksID.StopPG.id)
 
             # Reboot after 2 min...
-            reboot_title = AdaptTasksID.Reboot.title.format(PRG.RebootTimeOut)
+            reboot_title = AdaptTasksID.Reboot.title.format(PRG.reboot_time_out)
             DISPATCHER.startStage(AdaptTasksID.Reboot.id, reboot_title, StageType.TaskItem, in_line=True)
             try:
-                process = subprocess.run(['shutdown','-r',str(PRG.RebootTimeOut)],stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                process = subprocess.run(['shutdown','-r',str(PRG.reboot_time_out)],stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             except Exception as error:
                 DISPATCHER.error(can_t + reboot_title, error)            
             DISPATCHER.finishStage(AdaptTasksID.Reboot.id)
