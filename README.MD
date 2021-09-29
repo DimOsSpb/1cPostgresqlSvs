@@ -3,11 +3,12 @@
 - [1. Цель проекта](#1-цель-проекта)
 - [2. Необходимые условия](#2-необходимые-условия)
 - [3. Особенности реализации](#3-особенности-реализации)
+    - [Пример *logrotate: /etc/logrotate.d/1cPSQLServ:*](#пример-logrotate-etclogrotated1cpsqlserv)
     - [Описание настроек - *config.yml:*](#описание-настроек---configyml)
 - [4. Ссылки](#4-ссылки)
-    - [4.1 https://v8.1c.ru/tekhnologii/postgrespro/](#41-httpsv81crutekhnologiipostgrespro)
-    - [4.2 https://v8.1c.ru/tekhnologii/sistemnye-trebovaniya-1s-predpriyatiya-8/](#42-httpsv81crutekhnologiisistemnye-trebovaniya-1s-predpriyatiya-8)
-    - [4.3 Автоматическая ротация log'ов с помощью logrotate](#43-автоматическая-ротация-logов-с-помощью-logrotate)
+    - [Системные требования «1С:Предприятия 8»](#системные-требования-1спредприятия-8)
+    - [Поддерживаемые версии PostgresPro](#поддерживаемые-версии-postgrespro)
+    - [Автоматическая ротация log'ов с помощью logrotate](#автоматическая-ротация-logов-с-помощью-logrotate)
 
 ## Статус
 
@@ -22,22 +23,16 @@
 ## 2. Необходимые условия
 
   * Желание разобраться в этом безобразии)... 
-  * Сам сервер с установленными 1с и Postgresql
-  * Базовый дистрибутив хоста - Debian 9 (Согласно рекомендациям 1с - максимально рекомендуемый из Debian, на момент написания данного текста). Здесь все для Debian, но адаптировать под другую платформу, думаю, не составит большого труда. [таблицы совместимости 1с](#41-httpsv81crutekhnologiipostgrespro)
+  * Сам сервер на базе ОС Linux, с установленными и настроенными 1с и Postgresql
   * Установленный python (мин. 3.5)
   * Смонтированные внешние тома, если надо...
   
 ## 3. Особенности реализации
 
+  Базовый дистрибутив хоста - Debian 9 (Согласно рекомендациям 1с - максимально рекомендуемый из Debian, на момент написания данного текста). Здесь все для Debian, но адаптировать под другую платформу, думаю, не составит большого труда. [таблицы совместимости 1с](#41-httpsv81crutekhnologiipostgrespro)
+
   Выполнение и все вызовы в скрипте производятся локально на сервере (не удаленно).
 В данном случае sudo на сервере не установлен.
-
-  Запускается по настройкам из Crone под root.
-  Например (crontab -u root -e):
-
- 37  23   *   *   *     cd /opt/serv && export PATH=$PATH:/usr/local/bin:/usr/lib/postgresql/12/bin && /opt/serv/1cPSQLServ.py -c config.yml
- 
- (ну ... как есть, как у Вас не знаю). 
 
 Решение состоит из:
 = 1cPSQLServ.py - основной скрипт.
@@ -48,7 +43,7 @@
 Работа приложения протоколируется. При ошибках на старте в 1cPSQLServ.log, пока config.yml не считан, далее в serv.log или как прописано в log/file: (в config.yml).
 Журналы д.б. ротированы и соответствующая настройка logrotate произведена... ([Автоматическая ротация log'ов с помощью logrotate](https://www.opennet.ru/base/sys/logrotate_howto.txt.html))
 
-#### Например /etc/logrotate.d/1cPSQLServ:
+#### Пример *logrotate: /etc/logrotate.d/1cPSQLServ:*
     /opt/serv/*.log {
           weekly
           rotate 3
@@ -61,7 +56,6 @@
           missingok
           su root root
     }
-
 
 #### Описание настроек - *config.yml:*
 
@@ -123,8 +117,17 @@
 
 Выполнение задач из раздела настроек  "Do:" в программе записано в жестком порядке. Для задач, которые требуют остановки сервиса 1с, сервис на время выполнения задач будет остановлен, после запущен. Задачи будут выполняться, все, если это возможно.
 
+Запускается скрипт по настройкам из Crone под root.
+ Например (crontab -u root -e):
+
+ 37  23   *   *   *     cd /opt/serv && export PATH=$PATH:/usr/local/bin:/usr/lib/postgresql/12/bin && /opt/serv/1cPSQLServ.py -c config.yml
+ 
+ (ну ... как есть, как у Вас не знаю). 
+Здесь важно работать из основного каталога пакета и подтянуть пути к утилитам Postgresql
+
+
 ## 4. Ссылки
-#### [Поддерживаемые версии PostgresPro](https://v8.1c.ru/tekhnologii/postgrespro/)
 #### [Системные требования «1С:Предприятия 8»](https://v8.1c.ru/tekhnologii/sistemnye-trebovaniya-1s-predpriyatiya-8/)
+#### [Поддерживаемые версии PostgresPro](https://v8.1c.ru/tekhnologii/postgrespro/)
 #### [Автоматическая ротация log'ов с помощью logrotate](https://www.opennet.ru/base/sys/logrotate_howto.txt.html)
 
