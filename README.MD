@@ -5,8 +5,9 @@
 - [3. Особенности реализации](#3-особенности-реализации)
     - [Описание настроек - *config.yml:*](#описание-настроек---configyml)
 - [4. Ссылки](#4-ссылки)
-  - [4.1 https://v8.1c.ru/tekhnologii/postgrespro/](#41-httpsv81crutekhnologiipostgrespro)
-  - [4.2 https://v8.1c.ru/tekhnologii/sistemnye-trebovaniya-1s-predpriyatiya-8/](#42-httpsv81crutekhnologiisistemnye-trebovaniya-1s-predpriyatiya-8)
+    - [4.1 https://v8.1c.ru/tekhnologii/postgrespro/](#41-httpsv81crutekhnologiipostgrespro)
+    - [4.2 https://v8.1c.ru/tekhnologii/sistemnye-trebovaniya-1s-predpriyatiya-8/](#42-httpsv81crutekhnologiisistemnye-trebovaniya-1s-predpriyatiya-8)
+    - [4.3 Автоматическая ротация log'ов с помощью logrotate](#43-автоматическая-ротация-logов-с-помощью-logrotate)
 
 ## Статус
 
@@ -44,15 +45,30 @@
 - Config.yml - настройки.
 - *.tmpl - шаблоны с инструкциями для восстановления архивов
 
-Работа приложения протоколируется, при ошибках на старте в 1cPSQLServ.log пока config.yml не считан, далее в serv.log или как прописано в log/file: (в config.yml).
-Журналы д.б. ротированы и соответствующая настройка logrotate произведена...
+Работа приложения протоколируется. При ошибках на старте в 1cPSQLServ.log, пока config.yml не считан, далее в serv.log или как прописано в log/file: (в config.yml).
+Журналы д.б. ротированы и соответствующая настройка logrotate произведена... ([Автоматическая ротация log'ов с помощью logrotate](https://www.opennet.ru/base/sys/logrotate_howto.txt.html))
+
+#### Например /etc/logrotate.d/1cPSQLServ:
+    /opt/serv/*.log {
+          weekly
+          rotate 3
+          size=1M
+          noolddir
+          copytruncate
+          delaycompress
+          compress
+          notifempty
+          missingok
+          su root root
+    }
+
 
 #### Описание настроек - *config.yml:*
 
-    Description: Название
+    Description: Название набора заданий
     Host: xx.xx.xx.xx         # ip например, пока только для описания 
-    SQLUserName: postgres     # Имя пользователя
-    1cServiceName: srv1cv83   # ...
+    SQLUserName: postgres     # Имя пользователя Postgresql
+    1cServiceName: srv1cv83   # Имя сервиса 1с
     BackUp:                   
       Dir: /mnt/pg_arch/ARCH  # Раздел для архивов
     Do:
@@ -61,16 +77,15 @@
       - Vacuum-SQL
       - BackUp-1cExtFiles
       - Clean-1cCache
-      # - Restart-1c
       - FSCheck
-      # - Reboot
+
     BackUp-SQL:                           # По имени задач выше, параметры задач
       Depth: 1                            # Days - Хранить архивы баз X дней
       KeepQuantity: 5                     # Archives - Хранить минимум Х архивов (не трогать при удалении устаревших по настройке выше)
       RestoreManualTmpt: RestSQLManl.tmpt # Шаблон для инструкций 
       RestoreManualFile: README.MD        # Имя файла инструкций (ляжет в каталог с архивом базы, содержит описание и команды для восстановления)
     BackUp-Bases:                         
-      - "GILV"                            # Собственно какие базы архивировать в Раздел для архивов, архивы лягут в папку с именем базы в виде каталога с шифром даты-времени-версии.
+      - "GILV"                            # Собственно шаблоны - какие базы архивировать в Раздел для архивов, архивы лягут в папку с именем базы в виде каталога с шифром даты-времени-версии_архива.
       # - "%ERP%"
       # - "%BUH%"
       # - "%UPP%"
@@ -109,6 +124,7 @@
 Выполнение задач из раздела настроек  "Do:" в программе записано в жестком порядке. Для задач, которые требуют остановки сервиса 1с, сервис на время выполнения задач будет остановлен, после запущен. Задачи будут выполняться, все, если это возможно.
 
 ## 4. Ссылки
-### 4.1 https://v8.1c.ru/tekhnologii/postgrespro/
-### 4.2 https://v8.1c.ru/tekhnologii/sistemnye-trebovaniya-1s-predpriyatiya-8/
+#### [Поддерживаемые версии PostgresPro](https://v8.1c.ru/tekhnologii/postgrespro/)
+#### [Системные требования «1С:Предприятия 8»](https://v8.1c.ru/tekhnologii/sistemnye-trebovaniya-1s-predpriyatiya-8/)
+#### [Автоматическая ротация log'ов с помощью logrotate](https://www.opennet.ru/base/sys/logrotate_howto.txt.html)
 

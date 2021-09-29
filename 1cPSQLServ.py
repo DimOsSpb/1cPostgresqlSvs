@@ -473,31 +473,35 @@ if critical_for_1c_tasks_present:
                 k_time = time.time() - PRG.KeepDepth * 86400
                 clean_log = False
                 for l in bases:
-                    d = os.path.join(PRG.CacheDir, l['id']) 
-                    d = os.path.join(d, PRG.LogDirName) 
-                    if os.path.isdir(d):
-                        # Сожраним удаляемый журнал...
-                        log_arch_dir = os.path.join(PRG.backup_dir, l['name'])
-                        if not os.path.exists(log_arch_dir):
-                            os.makedirs(log_arch_dir)
-                        log_arch_dir = os.path.join(log_arch_dir, PRG.LogArchDirName)
-                        if not os.path.exists(log_arch_dir):
-                            os.makedirs(log_arch_dir)
-                        time_stamp = datetime.datetime.now().strftime("%d%m%Y%H%M_1cLog")
-                        log_arch_file = os.path.join(log_arch_dir, time_stamp)
+                    DISPATCHER.startStage(l, l, StageType.TaskItem, in_line=True)
+                    try:                    
+                        d = os.path.join(PRG.CacheDir, l['id']) 
+                        d = os.path.join(d, PRG.LogDirName) 
+                        if os.path.isdir(d):
+                            # Сожраним удаляемый журнал...
+                            log_arch_dir = os.path.join(PRG.backup_dir, l['name'])
+                            if not os.path.exists(log_arch_dir):
+                                os.makedirs(log_arch_dir)
+                            log_arch_dir = os.path.join(log_arch_dir, PRG.LogArchDirName)
+                            if not os.path.exists(log_arch_dir):
+                                os.makedirs(log_arch_dir)
+                            time_stamp = datetime.datetime.now().strftime("%d%m%Y%H%M_1cLog")
+                            log_arch_file = os.path.join(log_arch_dir, time_stamp)
 
-                        dir_time = os.stat(d).st_mtime 
-                        dir_size = get_size(d)
-                        if dir_time < s_time or dir_size >= PRG.LogSizeMax*1048576:  # Megabytes -> Bytes
-                            clean_log = True
-                        if clean_log:
-                            # tar -cvf archive.tar.gz /path/to/files
-                            process = subprocess.run(['tar','-zcvf',log_arch_file+'.tar.gz',d], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)   
-                            # Удаляем...
-                            shutil.rmtree(d)
-                        # Чистим старые архивы логов
-                        del_old(log_arch_dir, k_time, files = True )
-                        
+                            dir_time = os.stat(d).st_mtime 
+                            dir_size = get_size(d)
+                            if dir_time < s_time or dir_size >= PRG.LogSizeMax*1048576:  # Megabytes -> Bytes
+                                clean_log = True
+                            if clean_log:
+                                # tar -cvf archive.tar.gz /path/to/files
+                                process = subprocess.run(['tar','-zcvf',log_arch_file+'.tar.gz',d], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)   
+                                # Удаляем...
+                                shutil.rmtree(d)
+                            # Чистим старые архивы логов
+                            del_old(log_arch_dir, k_time, files = True )
+                            time.sleep(30)  # Первый раз что-то пошло не так, 1с пришлось перезагружать, есть подозрение - дать время закончить работу системы в фоне...
+                    except Exception as error:
+                        DISPATCHER.error(can_t + TasksID.Clean1cCache.title, error)                          
             except Exception as error:
                     DISPATCHER.error(can_t + TasksID.Clean1cCache.title, error) 
             DISPATCHER.finishStage(TasksID.Clean1cCache.id)

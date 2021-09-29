@@ -1,4 +1,4 @@
-Description: Service 1cPGSQL
+Description: 1cPGSQL maintenance
 Host: 192.168.0.29
 SQLUserName: postgres
 1cServiceName: srv1cv83
@@ -14,8 +14,8 @@ Do:
   - FSCheck
   # - Reboot
 BackUp-SQL:
-  Depth: 1 #Days
-  KeepQuantity: 5 #Archives
+  Depth: 7 #Days
+  KeepQuantity: 10 #Archives
   RestoreManualTmpt: RestSQLManl.tmpt 
   RestoreManualFile: README.MD
 BackUp-Bases:
