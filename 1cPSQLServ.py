@@ -41,11 +41,12 @@ class AdaptTasksID(ExtEnum):
     Start1с = ("Start1с","Start 1c service")
     StopPG = ("StopPG","Stop Postgresql service")
     Reboot = ("Reboot","Reboot the system in {} minutes")
+    Wait = ("Wait","Wait {} sec")
 
 
 class WarnException(Exception): pass
 
-class Programm:
+class Program:
     def __init__(self) -> None:
         self.lockfile = None
         self.name = TasksID.Main.title
@@ -53,10 +54,11 @@ class Programm:
         self.bases_pattern = ""
         self.sql_username = ""
         self.name_1cService = ""
+        self.service_1c_dir = ""
         self.name_PGService = ""
         self.description = ""
         self.tasks = None
-        self.bases = None
+        self.bases = []
         self.pgVer = None
         self.backup_dir = ""
         self.backup_depth = None
@@ -68,13 +70,13 @@ class Programm:
         self.rest_sql_man = ""
         self.rest_files_man_tmp = ""
         self.rest_files_man = ""
-        self.cache_dir = ""
         self.log_dir_name = "1Cv8Log"
         self.log_arch_dir_name = "Logs"
         self.log_depth = None #Days
         self.log_size_max = None    #GB
-        self.keep_depth = None #Days
-        self.keep_size_max = None    #GB
+        self.log_keep_depth = None #Days
+        self.log_keep_size_max = None    #GB
+        self.log_wait_after = None    #sec
         self.disk_space_usage_warn = None
         self.disk_space_usage_err = None
         self.reboot_time_out = None
@@ -95,6 +97,27 @@ class Programm:
         file.flush()
         print(msg, end='')
         sys.exit(1)
+
+def get_1c_bases_info():
+    # 1CV8Clst.lst содержит id баз - это имена каталогов для чистки
+    bases = []
+    try:
+        lst = os.path.join(PRG.service_1c_dir, '1CV8Clst.lst') 
+        with open(lst, "r") as f:
+            data = f.read()
+        s1 = data.replace('\n','')
+        n = int(re.findall('},{(\d*),{.*', s1)[0])
+        se = re.findall('},{\d*(.*)', s1)
+        s2 = re.findall(',{(\w{8}-\w{4}-\w{4}-\w{4}-\w{12},".*?"),', se[0])
+        for i in range(n):
+            base = {}
+            s = s2[i].split(',')
+            base['id'] = s[0]
+            base['name'] = s[1].replace('"','')
+            bases.append(base)        
+    except Exception as error:
+        DISPATCHER.error(can_t + "get 1c bases: {}".format(error))
+    return bases
 
 def get_size(start_path='.'):
     total_size = 0
@@ -136,7 +159,7 @@ def checkFS(max_percent_warn: int, max_percent_err: int, top_size_lines: int = 3
         output = process.stdout.decode('utf-8')   
         return 2 if err else 1, vols, output
     else:
-        return True, [], ""
+        return False, [], ""
 
 def del_old(files_dir: str, old_time: float, exclude_list: list = [], first_chars_in_name: str = None, files = False, dirs = False, backup_quantity = 0):     
     # Соберем и отсортируем нужные каталоги...
@@ -170,7 +193,7 @@ def del_old(files_dir: str, old_time: float, exclude_list: list = [], first_char
                 continue
             d_count -= 1
 
-PRG = Programm()
+PRG = Program()
 can_t = "Can't "
 
 # Журнал д.б. ротирован, настройка logrotate произведена...
@@ -196,6 +219,7 @@ try:
     PRG.description = cfg['Description']
     PRG.host = cfg['Host']
     PRG.name_1cService = cfg['1cServiceName']
+    PRG.service_1c_dir = cfg['1cServiceDir']
     PRG.name_PGService = cfg['PGServiceName']
     PRG.sql_username = cfg['SQLUserName']
     PRG.tasks = cfg['Do']
@@ -218,7 +242,6 @@ try:
     PRG.rest_files_man_tmp = cfg['BackUp-1cExtFiles']['RestoreManualTmpt']
     PRG.rest_files_man = cfg['BackUp-1cExtFiles']['RestoreManualFile']
 
-    PRG.cache_dir = cfg['Clean-1cCache']['CacheDir']
     PRG.log_dir_name = cfg['Clean-1cCache']['LogDirName']
     PRG.log_arch_dir_name = cfg['Clean-1cCache']['LogArchDirName']
     PRG.log_depth = cfg['Clean-1cCache']['LogDepth']
@@ -227,12 +250,15 @@ try:
     PRG.log_size_max = cfg['Clean-1cCache']['LogSizeMax']
     if type(PRG.log_size_max) is not int:
             PRG.log_size_max = 1000      # MB    
-    PRG.keep_depth = cfg['Clean-1cCache']['KeepDepth']
-    if type(PRG.keep_depth) is not int:
-            PRG.keep_depth = 365    # Days
-    PRG.keep_size_max = cfg['Clean-1cCache']['KeepSizeMax']
-    if type(PRG.keep_size_max) is not int:
-            PRG.keep_size_max = 6000      # MB 
+    PRG.log_keep_depth = cfg['Clean-1cCache']['KeepDepth']
+    if type(PRG.log_keep_depth) is not int:
+            PRG.log_keep_depth = 365    # Days
+    PRG.log_keep_size_max = cfg['Clean-1cCache']['KeepSizeMax']
+    if type(PRG.log_keep_size_max) is not int:
+            PRG.log_keep_size_max = 6000      # MB 
+    PRG.log_wait_after = cfg['Clean-1cCache']['WaitAfter']
+    if type(PRG.log_wait_after) is not int:
+            PRG.log_wait_after = 6000      # MB 
     PRG.disk_space_usage_warn = cfg['FSCheck']['DiskSpaceUsageWarn']
     if type(PRG.disk_space_usage_warn) is not int:
             PRG.disk_space_usage_warn = 75      # %
@@ -253,26 +279,22 @@ DISPATCHER.startStage(TasksID.Main.id,TasksID.Main.title, StageType.Main)
 ## 1.3 Версия Postgresql - это важно. работать с архивами надо в рамках совместимых для этого версиях, лучше в одной. Эту информацию будем писать в имя архива
 
 try:
-    process = subprocess.run(['postgres', '-V'], stdout=subprocess.PIPE)
-    if process.returncode:
-        raise Exception(str(process.stderr))
+    process = subprocess.run(['postgres', '-V'], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     output = process.stdout.decode('utf-8')
     output = output.split(' ')
     PRG.pgVer = output[2].strip() 
 except Exception as e:
-   DISPATCHER.exit("Сan't get Postgres version: {}".format(e))
+   DISPATCHER.error(can_t + "get Postgres version: {}", e)
 
 ## 1.4 Считаем базы по шаблонам из Postgresql
 
 try:
     select_bases = "SELECT datname FROM pg_database WHERE datname LIKE ANY(ARRAY" + str(PRG.bases_pattern) + ")"
-    process = subprocess.run(['psql', '-U',PRG.sql_username,'--tuples-only','-P','format=unaligned','-c',select_bases], stdout=subprocess.PIPE)
-    if process.returncode:
-        raise Exception(str(process.stderr))    
+    process = subprocess.run(['psql', '-U',PRG.sql_username,'--tuples-only','-P','format=unaligned','-c',select_bases], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     output = process.stdout.decode('utf-8')
     PRG.bases = output.splitlines()
 except Exception as e:
-    DISPATCHER.exit("Сan't get SQL bases: {}".format(e))
+    DISPATCHER.error(can_t + "get SQL bases: {}", e)
 
 # 2. Выполнение задач
 
@@ -322,7 +344,7 @@ if TasksID.BackUpSQL.id in PRG.tasks:
             with open(cur_buckup_dir+"/"+PRG.rest_sql_man, "w+") as f:
                 f.write(man)
         except Exception as error:
-            DISPATCHER.error("Сan't make sql restore manual", error)       
+            DISPATCHER.error(can_t + "make sql restore manual", error)       
         
         # Удаляем в папке с бэкапами архивы старше PRG.backup_depth дней кроме архива файлов!!
         # Учитываем, что если архив не прошел, удалять глубже PRG.backup_quantity не стоит, иначе можно удалить все...
@@ -335,16 +357,20 @@ if TasksID.BackUpSQL.id in PRG.tasks:
             del_old(base_dir, s_time, exclude_list=PRG.ext_1c_buckup_files_dir, dirs = True, backup_quantity = PRG.backup_quantity)
 
         except Exception as error:
-            DISPATCHER.error("Сan't clean up old archives", error)
+            DISPATCHER.error(can_t + "clean up old archives", error)
         DISPATCHER.finishStage(cur_base)
     DISPATCHER.finishStage(TasksID.BackUpSQL.id)
 
 ### 2.1.2 - BackUp-1cExtFiles... 
-
+if any(item in [TasksID.BackUp1cExtFiles.id, TasksID.BackUp1cExtFiles.id] for item in PRG.tasks):
+    _1c_bases_info = get_1c_bases_info()
+else:
+    _1c_bases_info = []
 
 if TasksID.BackUp1cExtFiles.id in PRG.tasks: 
     DISPATCHER.startStage(TasksID.BackUp1cExtFiles.id, TasksID.BackUp1cExtFiles.title, StageType.Task)
-    for cur_base in PRG.bases:
+    for base_info in _1c_bases_info:
+        cur_base = base_info['name']
         DISPATCHER.startStage(cur_base, cur_base, StageType.TaskItem, in_line=True)
         try:
             cur_stage_stop = False
@@ -412,7 +438,7 @@ if critical_for_1c_tasks_present:
 
     # Stop 1c...
     is_1c_stopped = False
-    DISPATCHER.startStage(AdaptTasksID.Stop1с.id, AdaptTasksID.Stop1с.title, StageType.Prepare, in_line=True)
+    DISPATCHER.startStage(AdaptTasksID.Stop1с.id, AdaptTasksID.Stop1с.title, StageType.Assist, in_line=True)
     try:
         process = subprocess.run(['systemctl','stop',PRG.name_1cService],stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         if process.returncode:
@@ -466,30 +492,15 @@ if critical_for_1c_tasks_present:
         if TasksID.Clean1cCache.id in PRG.tasks:
             DISPATCHER.startStage(TasksID.Clean1cCache.id, TasksID.Clean1cCache.title, StageType.Task)
             try:
-                # 1CV8Clst.lst содержит id баз - это имена каталогов для чистки
-                lst = os.path.join(PRG.cache_dir, '1CV8Clst.lst') 
-                with open(lst, "r") as f:
-                    data = f.read()
-                s1 = data.replace('\n','')
-                n = int(re.findall('},{(\d*),{.*', s1)[0])
-                se = re.findall('},{\d*(.*)', s1)
-                s2 = re.findall(',{(\w{8}-\w{4}-\w{4}-\w{4}-\w{12},".*?"),', se[0])
-                bases = []
-                for i in range(n):
-                    base = {}
-                    s = s2[i].split(',')
-                    base['id'] = s[0]
-                    base['name'] = s[1].replace('"','')
-                    bases.append(base)
                 # Очистим каталоги всех баз...    
                 now = time.time()
                 s_time = time.time() - PRG.log_depth * 86400
-                k_time = time.time() - PRG.keep_depth * 86400
+                k_time = time.time() - PRG.log_keep_depth * 86400
                 clean_log = False
-                for l in bases:
+                for l in _1c_bases_info:
                     DISPATCHER.startStage(l['name'], l['name'], StageType.TaskItem, in_line=True)
                     try:                    
-                        d = os.path.join(PRG.cache_dir, l['id']) 
+                        d = os.path.join(PRG.service_1c_dir, l['id']) 
                         d = os.path.join(d, PRG.log_dir_name) 
                         if os.path.isdir(d):
                             # Сожраним удаляемый журнал...
@@ -513,7 +524,6 @@ if critical_for_1c_tasks_present:
                                 shutil.rmtree(d)
                             # Чистим старые архивы логов
                             del_old(log_arch_dir, k_time, files = True )
-                            time.sleep(30)  # Первый раз что-то пошло не так, 1с пришлось перезагружать, есть подозрение - дать время закончить работу системы в фоне...
                     except Exception as error:
                         DISPATCHER.error(can_t + TasksID.Clean1cCache.title, error)                          
                     DISPATCHER.finishStage(l['name'])
@@ -522,7 +532,11 @@ if critical_for_1c_tasks_present:
             DISPATCHER.finishStage(TasksID.Clean1cCache.id)
 
         # Start 1c...
-        DISPATCHER.startStage(AdaptTasksID.Start1с.id, AdaptTasksID.Start1с.title, StageType.Prepare, in_line=True)
+        DISPATCHER.startStage(AdaptTasksID.Wait.id, AdaptTasksID.Wait.title.format(PRG.log_wait_after), StageType.Assist, in_line=True)
+        time.sleep(PRG.log_wait_after)  # Первый раз что-то пошло не так, 1с пришлось перезагружать, есть подозрение - дать время ...
+        DISPATCHER.finishStage(AdaptTasksID.Wait.id)
+
+        DISPATCHER.startStage(AdaptTasksID.Start1с.id, AdaptTasksID.Start1с.title, StageType.Assist, in_line=True)
         try:
             process = subprocess.run(['systemctl','start',PRG.name_1cService], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             if process.returncode:
@@ -560,7 +574,7 @@ if TasksID.Reboot.id in PRG.tasks:
     try:
         # Stop 1c...
         is_1c_stopped = False
-        DISPATCHER.startStage(AdaptTasksID.Stop1с.id, AdaptTasksID.Stop1с.title, StageType.Prepare, in_line=True)
+        DISPATCHER.startStage(AdaptTasksID.Stop1с.id, AdaptTasksID.Stop1с.title, StageType.Assist, in_line=True)
         try:
             process = subprocess.run(['systemctl','stop',PRG.name_1cService],stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             if process.returncode:
@@ -574,8 +588,8 @@ if TasksID.Reboot.id in PRG.tasks:
         DISPATCHER.finishStage(AdaptTasksID.Stop1с.id)
 
         if is_1c_stopped:
-            # Stop Postgresql...
-            DISPATCHER.startStage(AdaptTasksID.StopPG.id, AdaptTasksID.StopPG.title, StageType.Prepare, in_line=True)
+            #Stop Postgresql...
+            DISPATCHER.startStage(AdaptTasksID.StopPG.id, AdaptTasksID.StopPG.title, StageType.Assist, in_line=True)
             try:
                 process = subprocess.run(['systemctl','stop',PRG.name_PGService],stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 if process.returncode:
@@ -584,7 +598,7 @@ if TasksID.Reboot.id in PRG.tasks:
                 DISPATCHER.error(can_t + AdaptTasksID.StopPG.title, error)            
             DISPATCHER.finishStage(AdaptTasksID.StopPG.id)
 
-            # Reboot after 2 min...
+            #Reboot after 2 min...
             reboot_title = AdaptTasksID.Reboot.title.format(PRG.reboot_time_out)
             DISPATCHER.startStage(AdaptTasksID.Reboot.id, reboot_title, StageType.TaskItem, in_line=True)
             try:

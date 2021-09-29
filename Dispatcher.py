@@ -1,3 +1,4 @@
+from shutil import Error
 import requests
 from enum import Enum
 import datetime
@@ -7,20 +8,20 @@ def time_diff(start, end):
     diff = end - start
     min, secs = divmod(diff.days * 86400 + diff.seconds, 60)
     hour, minutes = divmod(min, 60)
-    return '%.2d hour %.2d min %.2d sec' % (hour, minutes, secs)
+    return '{}h.{}m.{}s'.format(hour, minutes, secs)
 
 class StageType(Enum):
     Undef = 0
     Main = 1
     Task = 2
     TaskItem = 3
-    Prepare = 4
+    Assist = 4
     Check = 5
 
 class FactType(Enum):
     #Ok = 0
-    Warning = 1
-    Error = 2
+    WARNING = 1
+    ERROR = 2
     Exit = 10
     Start = 20
     Finish = 30
@@ -28,9 +29,9 @@ class FactType(Enum):
     Report = 60
 
 class ResType(Enum):
-    Ok = 0
-    Warning = 1
-    Error = 2
+    OK = 0
+    WARNING = 1
+    ERROR = 2
     
 class TelegramParms:
     def __init__(self) -> None:
@@ -40,7 +41,7 @@ class TelegramParms:
 class Summary:
     def __init__(self, name) -> None:
         self.name = name
-        self.result = ResType.Ok   # type: ResType
+        self.result = ResType.OK   # type: ResType
         self.total = 0
         self.tasks = 0
         self.ok = 0
@@ -124,9 +125,9 @@ class Dispatcher:
                 value.finish_time = datetime.datetime.now()
                 value.dif_time = time_diff(value.start_time, value.finish_time)
                 if value.in_line:
-                    mes_text = "({})".format(value.dif_time)
+                    mes_text = "-{}-".format(value.dif_time)
                 else:
-                    mes_text = "{} ({})".format(value.description, value.dif_time)
+                    mes_text = "{} -{}-".format(value.description ,value.dif_time)
                 self.reg(FactType.Finish, mes_text, stage=value)
                 self.current = value.parent
 
@@ -134,11 +135,11 @@ class Dispatcher:
         # Считаем свои records:
         res = Summary(stage.id)
         for record in stage.records:
-            if record.fact_type == FactType.Error or record.fact_type == FactType.Exit:
+            if record.fact_type == FactType.ERROR or record.fact_type == FactType.Exit:
                 res.error += 1
             elif record.fact_type == FactType.Start:
                 res.started += 1
-            elif record.fact_type == FactType.Warning:
+            elif record.fact_type == FactType.WARNING:
                 res.warning += 1
             elif record.fact_type == FactType.Finish:
                 res.finished += 1
@@ -146,19 +147,19 @@ class Dispatcher:
         for child in stage.children:
             sub_res = self.__getResultOfLevel(child)
             res.total += 1
-            # Расчет для заданых задач отдельный (total = all)
+            # Расчет для заданных задач отдельный (total = all)
             if child.type == StageType.Task or child.type == StageType.TaskItem or child.type == StageType.Check:
                 res.tasks += 1
-                if sub_res.result == ResType.Ok:
+                if sub_res.result == ResType.OK:
                     res.ok += 1 
             res.error += sub_res.error
             res.warning += sub_res.warning
-        if res.started == res.finished and res.error == 0 and res.warning == 0 and res.total == res.ok:
-            res.result = ResType.Ok
+        if res.started == res.finished and res.error == 0 and res.warning == 0 and res.tasks == res.ok:
+            res.result = ResType.OK
         elif res.error > 0:
-            res.result = ResType.Error
+            res.result = ResType.ERROR
         else:
-            res.result = ResType.Warning        
+            res.result = ResType.WARNING        
         return res
 
     def report(self, description: str = "", telegram: bool = False):
@@ -180,7 +181,7 @@ class Dispatcher:
         mesg_l += tmpl.format(res.ok, b="", be="")
         mesg_t += tmpl.format(res.ok, b="<b>",be="</b>")
 
-        tmpl = "Сompleted with remark {b}{0}{be} tasks.\n"
+        tmpl = "Completed with remark {b}{0}{be} tasks.\n"
         mesg_l += tmpl.format(res.tasks-res.ok, b="", be="")
         mesg_t += tmpl.format(res.tasks-res.ok, b="<b>",be="</b>")
         # warns, errors:
@@ -212,25 +213,28 @@ class Dispatcher:
         self.reg(FactType.Exit, mesg)
 
     def warning(self, mesg):
-        self.reg(FactType.Warning, mesg)
+        self.reg(FactType.WARNING, mesg)
 
-    def error(self, mesg, e: Exception):
-        self.reg(FactType.Error, "{}: {}".format(mesg,str(e).split()))
+    def error(self, mesg, e = ""):
+        self.reg(FactType.ERROR, "{}{}".format(mesg,": "+str(e) if e != "" else ""))
 
     def reg(self, mType: FactType, mesg: str = "", level: int = 0, in_line: bool = False, new_line: bool = False, stage: Stage = None, stage_type: StageType = StageType.Undef):
         # Запишем событие
+        _in_line = in_line
         if stage != None:
-            mesg = stage.description
+            # mesg = stage.description
             level = stage.level
-            in_line = stage.in_line
+            _in_line = stage.in_line
             stage_type = stage.type
         stage_text = ""
-        type_sep = ":"
+        type_sep = ": "
         if stage_type != StageType.Undef:
             stage_text = " "+stage_type.name
 
         if len(self.stages) > 0 and self.current != None:
             self.current.records.append(Record(mType,mesg))
+            if stage == None:
+                _in_line = self.current.in_line
         if self.ok:
             if new_line:
                 _mesg = "\n"
@@ -246,19 +250,19 @@ class Dispatcher:
                 _mesg_text = mesg
                 _mTypeName = mType.name   
                 _time = datetime.datetime.now().strftime("%d/%m/%y %H:%M")
-                if (mType == FactType.Start and in_line) or mType == FactType.Warning or mType == FactType.Error:
+                if (mType == FactType.Start or mType == FactType.WARNING or mType == FactType.ERROR) and _in_line:
                     mes_sep = " ... "
                 else:
                     mes_sep = "\n"
 
-                if mType == FactType.Finish and in_line:
+                if mType == FactType.Finish and _in_line:
                     mes_tab = ""
+                    type_sep = " "
                     stage_text = ""
-                    type_sep = "."
-                    _mesg_text = ""
+                    # _mesg_text = ""
                 else:
                     mes_tab = "   " * level
-                _mesg += "{}{} {}{}{} {}{}".format(mes_tab, _time, _mTypeName, stage_text, type_sep, _mesg_text, mes_sep)
+                _mesg += "{}{} {}{}{}{}{}".format(mes_tab, _time, _mTypeName, stage_text, type_sep, _mesg_text, mes_sep)
 
             if self.file:
                 self.file.write(_mesg)

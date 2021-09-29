@@ -2,6 +2,7 @@ Description: 1cPGSQL maintenance
 Host: 192.168.0.29
 SQLUserName: postgres
 1cServiceName: srv1cv83
+1cServiceDir: /home/usr1cv8/.1cv8/1C/1cv8/reg_1541
 PGServiceName: postgresql
 BackUp:
   Dir: /mnt/pg_arch/ARCH
@@ -11,9 +12,8 @@ Do:
   - Vacuum-SQL
   - BackUp-1cExtFiles
   - Clean-1cCache
-  # - Restart-1c
   - FSCheck
-  - Reboot
+  # - Reboot
 BackUp-SQL:
   Depth: 7 #Days
   KeepQuantity: 10 #Archives
@@ -36,16 +36,16 @@ BackUp-1cExtFiles:
   RestoreManualFile: README.MD
 
 Clean-1cCache:
-  CacheDir: /home/usr1cv8/.1cv8/1C/1cv8/reg_1541
   LogDirName: 1Cv8Log
   LogArchDirName: 1cLogs
   LogDepth: 90        #Days
   LogSizeMax: 1000    #MB
   KeepDepth: 365      #Days
   KeepSizeMax: 6000   #MB
+  WaitAfter: 30       #sec
 
 FSCheck:
-  DiskSpaceUsageWarn: 60 #%
+  DiskSpaceUsageWarn: 75 #%
   DiskSpaceUsageErr: 90 #%
 
 Reboot:
@@ -55,7 +55,8 @@ log:
   file: "/opt/serv/serv.log"
   con: true 
   telegram:
-    token: 
-    channel_id: 
+    token:
+    channel_id:
+
        
 
