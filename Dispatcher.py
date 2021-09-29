@@ -14,7 +14,7 @@ class StageType(Enum):
     Main = 1
     Task = 2
     TaskItem = 3
-    Adaptating = 4
+    Prepare = 4
     Check = 5
 
 class FactType(Enum):
@@ -225,6 +225,7 @@ class Dispatcher:
             in_line = stage.in_line
             stage_type = stage.type
         stage_text = ""
+        type_sep = ":"
         if stage_type != StageType.Undef:
             stage_text = " "+stage_type.name
 
@@ -241,7 +242,9 @@ class Dispatcher:
                 mes_tab = "   " * level
                 for line in mesg.splitlines(True):
                     _mesg += mes_tab + line
-            else:    
+            else:
+                _mesg_text = mesg
+                _mTypeName = mType.name   
                 _time = datetime.datetime.now().strftime("%d/%m/%y %H:%M")
                 if (mType == FactType.Start and in_line) or mType == FactType.Warning or mType == FactType.Error:
                     mes_sep = " ... "
@@ -250,9 +253,12 @@ class Dispatcher:
 
                 if mType == FactType.Finish and in_line:
                     mes_tab = ""
+                    stage_text = ""
+                    type_sep = "."
+                    _mesg_text = ""
                 else:
                     mes_tab = "   " * level
-                _mesg += "{}{} {}{}: {}{}".format(mes_tab, _time, mType.name, stage_text, mesg, mes_sep)
+                _mesg += "{}{} {}{}{} {}{}".format(mes_tab, _time, _mTypeName, stage_text, type_sep, _mesg_text, mes_sep)
 
             if self.file:
                 self.file.write(_mesg)
@@ -263,11 +269,12 @@ class Dispatcher:
                 #print("-!!!-", end='', flush=True)
 
     def send_telegram(self, text: str):
-        method = "https://api.telegram.org/bot" + self.telegram.token + "/sendMessage"
-        r = requests.post(method, data={
-            "chat_id": self.telegram.channel_id,
-            "text": text,
-            "parse_mode": "HTML"
-        })
-        if r.status_code != 200:
-            raise Exception("post_text error")
+        if self.telegram.token != None or self.telegram.channel_id != None:
+            method = "https://api.telegram.org/bot" + self.telegram.token + "/sendMessage"
+            r = requests.post(method, data={
+                "chat_id": self.telegram.channel_id,
+                "text": text,
+                "parse_mode": "HTML"
+            })
+            if r.status_code != 200:
+                raise Exception("Cant send telegram")

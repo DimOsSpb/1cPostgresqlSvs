@@ -32,13 +32,15 @@ class TasksID(ExtEnum):
     Clean1cCache = ("Clean-1cCache","Clean 1c service cache")
     FSCheck = ("FSCheck","Check FS")
     Restart = ("Restart-1c","Restart 1c Service")
-    Reboot = ("Reboot","Reboot system")
+    Reboot = ("Reboot","Reboot the system")
     Stage_SafeFor1с = ("Stage_SafeFor1с","Stage when stopped 1c service")
 
 
-class PrivateTasksID(ExtEnum):
-    Task_Stop1с = ("Stop1с","Stop 1c service")
-    Task_Start1с = ("Start1с","Start 1c service")
+class AdaptTasksID(ExtEnum):
+    Stop1с = ("Stop1с","Stop 1c service")
+    Start1с = ("Start1с","Start 1c service")
+    StopPG = ("StopPG","Stop Postgresql service")
+    Reboot = ("Reboot","Reboot the system in {} minutes")
 
 
 class WarnException(Exception): pass
@@ -51,6 +53,7 @@ class Programm:
         self.bases_pattern = ""
         self.sql_username = ""
         self.name_1cService = ""
+        self.name_PGService = ""
         self.description = ""
         self.tasks = None
         self.bases = None
@@ -73,6 +76,7 @@ class Programm:
         self.KeepDepth = None #Days
         self.KeepSizeMax = None    #GB
         self.MaxDiskSpaceUsage = None
+        self.RebootTimeOut = None
 
     def isAlreadyRunning(self):
         self.lockfile = open(os.path.realpath(__file__), 'r')
@@ -189,6 +193,7 @@ try:
     PRG.description = cfg['Description']
     PRG.host = cfg['Host']
     PRG.name_1cService = cfg['1cServiceName']
+    PRG.name_PGService = cfg['PGServiceName']
     PRG.sql_username = cfg['SQLUserName']
     PRG.tasks = cfg['Do']
     DISPATCHER.total_tasks = len(PRG.tasks)
@@ -228,6 +233,9 @@ try:
     PRG.MaxDiskSpaceUsage = cfg['FSCheck']['MaxDiskSpaceUsage']
     if type(PRG.MaxDiskSpaceUsage) is not int:
             PRG.MaxDiskSpaceUsage = 80      # %
+    PRG.RebootTimeOut = cfg['Reboot']['TimeOut']
+    if type(PRG.RebootTimeOut) is not int:
+            PRG.RebootTimeOut = 2      # min
 except Exception as e:
     PRG.error('Configuration error',e)
 
@@ -398,7 +406,7 @@ if critical_for_1c_tasks_present:
 
     # Stop 1c...
     is_1c_stopped = False
-    DISPATCHER.startStage(PrivateTasksID.Task_Stop1с.id, PrivateTasksID.Task_Stop1с.title, StageType.Adaptating, in_line=True)
+    DISPATCHER.startStage(AdaptTasksID.Stop1с.id, AdaptTasksID.Stop1с.title, StageType.Prepare, in_line=True)
     try:
         process = subprocess.run(['systemctl','stop',PRG.name_1cService],stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         if process.returncode:
@@ -413,8 +421,8 @@ if critical_for_1c_tasks_present:
             raise Exception("Status 1c is not stopped!")
         is_1c_stopped = True
     except Exception as error:
-        DISPATCHER.error(can_t + PrivateTasksID.Task_Stop1с.title, error)            
-    DISPATCHER.finishStage(PrivateTasksID.Task_Stop1с.id)
+        DISPATCHER.error(can_t + AdaptTasksID.Stop1с.title, error)            
+    DISPATCHER.finishStage(AdaptTasksID.Stop1с.id)
     
     if is_1c_stopped:
     
@@ -473,7 +481,7 @@ if critical_for_1c_tasks_present:
                 k_time = time.time() - PRG.KeepDepth * 86400
                 clean_log = False
                 for l in bases:
-                    DISPATCHER.startStage(l, l, StageType.TaskItem, in_line=True)
+                    DISPATCHER.startStage(l['name'], l['name'], StageType.TaskItem, in_line=True)
                     try:                    
                         d = os.path.join(PRG.CacheDir, l['id']) 
                         d = os.path.join(d, PRG.LogDirName) 
@@ -502,12 +510,13 @@ if critical_for_1c_tasks_present:
                             time.sleep(30)  # Первый раз что-то пошло не так, 1с пришлось перезагружать, есть подозрение - дать время закончить работу системы в фоне...
                     except Exception as error:
                         DISPATCHER.error(can_t + TasksID.Clean1cCache.title, error)                          
+                    DISPATCHER.finishStage(l['name'])
             except Exception as error:
                     DISPATCHER.error(can_t + TasksID.Clean1cCache.title, error) 
             DISPATCHER.finishStage(TasksID.Clean1cCache.id)
 
         # Start 1c...
-        DISPATCHER.startStage(PrivateTasksID.Task_Start1с.id, PrivateTasksID.Task_Start1с.title, StageType.Adaptating, in_line=True)
+        DISPATCHER.startStage(AdaptTasksID.Start1с.id, AdaptTasksID.Start1с.title, StageType.Prepare, in_line=True)
         try:
             process = subprocess.run(['systemctl','start',PRG.name_1cService], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             if process.returncode:
@@ -521,8 +530,8 @@ if critical_for_1c_tasks_present:
                 # 4 program or service status is unknown                    
                 raise Exception("Status 1c - is not active!")
         except Exception as error:
-            DISPATCHER.error(can_t + PrivateTasksID.Task_Start1с.title, error)
-        DISPATCHER.finishStage(PrivateTasksID.Task_Start1с.id)
+            DISPATCHER.error(can_t + AdaptTasksID.Start1с.title, error)
+        DISPATCHER.finishStage(AdaptTasksID.Start1с.id)
 
 
 ### 2.3 - Checks... 
@@ -538,7 +547,47 @@ if TasksID.FSCheck.id in PRG.tasks:
     DISPATCHER.finishStage(TasksID.FSCheck.id)
 
 ### 2.4 - Reboot... 
+if TasksID.Reboot.id in PRG.tasks:
+    DISPATCHER.startStage(TasksID.Reboot.id, TasksID.Reboot.title, StageType.Task)
+    try:
+        # Stop 1c...
+        is_1c_stopped = False
+        DISPATCHER.startStage(AdaptTasksID.Stop1с.id, AdaptTasksID.Stop1с.title, StageType.Prepare, in_line=True)
+        try:
+            process = subprocess.run(['systemctl','stop',PRG.name_1cService],stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            if process.returncode:
+                raise Exception(str(process.stderr))
+            process = subprocess.run(['systemctl','status',PRG.name_1cService],stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            if process.returncode != 3:
+                raise Exception("Status 1c is not stopped!")
+            is_1c_stopped = True
+        except Exception as error:
+            DISPATCHER.error(can_t + AdaptTasksID.Stop1с.title, error)            
+        DISPATCHER.finishStage(AdaptTasksID.Stop1с.id)
 
+        if is_1c_stopped:
+            # Stop Postgresql...
+            DISPATCHER.startStage(AdaptTasksID.StopPG.id, AdaptTasksID.StopPG.title, StageType.Prepare, in_line=True)
+            try:
+                process = subprocess.run(['systemctl','stop',PRG.name_PGService],stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                if process.returncode:
+                    raise Exception(str(process.stderr))
+            except Exception as error:
+                DISPATCHER.error(can_t + AdaptTasksID.StopPG.title, error)            
+            DISPATCHER.finishStage(AdaptTasksID.StopPG.id)
+
+            # Reboot after 2 min...
+            reboot_title = AdaptTasksID.Reboot.title.format(PRG.RebootTimeOut)
+            DISPATCHER.startStage(AdaptTasksID.Reboot.id, reboot_title, StageType.TaskItem, in_line=True)
+            try:
+                process = subprocess.run(['shutdown','-r',str(PRG.RebootTimeOut)],stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            except Exception as error:
+                DISPATCHER.error(can_t + reboot_title, error)            
+            DISPATCHER.finishStage(AdaptTasksID.Reboot.id)
+
+    except Exception as error:
+        DISPATCHER.error(can_t + TasksID.Reboot.title, error)
+    DISPATCHER.finishStage(TasksID.Reboot.id)
 
 DISPATCHER.finishStage(TasksID.Main.id)
 DISPATCHER.reg(FactType.Line, level=1)

@@ -2,6 +2,7 @@ Description: 1cPGSQL maintenance
 Host: 192.168.0.29
 SQLUserName: postgres
 1cServiceName: srv1cv83
+PGServiceName: postgresql
 BackUp:
   Dir: /mnt/pg_arch/ARCH
 Do:
@@ -12,7 +13,7 @@ Do:
   - Clean-1cCache
   # - Restart-1c
   - FSCheck
-  # - Reboot
+  - Reboot
 BackUp-SQL:
   Depth: 7 #Days
   KeepQuantity: 10 #Archives
@@ -25,7 +26,7 @@ BackUp-Bases:
   # - "%UPP%"
   # - "%ZUP%"
   # - "%ARCH%"
-  - "%KA-%"  
+  #- "%KA-%"  
 BackUp-1cExtFiles:
   # Dir: /mnt/pg_arch/ARCH
   1cExtFilesDir: /mnt/1cdata
@@ -45,6 +46,8 @@ Clean-1cCache:
 FSCheck:
   MaxDiskSpaceUsage: 60 #%
 
+Reboot:
+  TimeOut: 2  #min
 
 log:
   file: "/opt/serv/serv.log"
