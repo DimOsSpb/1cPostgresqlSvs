@@ -13,7 +13,7 @@ Do:
   - BackUp-1cExtFiles
   - Clean-1cCache
   - FSCheck
-  # - Reboot
+  - Reboot
 BackUp-SQL:
   Depth: 7 #Days
   KeepQuantity: 10 #Archives
