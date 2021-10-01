@@ -8,12 +8,13 @@ BackUp:
   Dir: /mnt/pg_arch/ARCH
 Do:
   - BackUp-SQL
-  - Reindex-SQL
-  - Vacuum-SQL
+  # - Reindex-SQL
+  # - Vacuum-SQL
   - BackUp-1cExtFiles
-  - Clean-1cCache
+  - Reset-1cJournals
+  # - Clean-1cCache
   - FSCheck
-  - Reboot
+  # - Reboot
 BackUp-SQL:
   Depth: 7 #Days
   KeepQuantity: 10 #Archives
@@ -35,7 +36,7 @@ BackUp-1cExtFiles:
   RestoreManualTmpt: RestFilesManl.tmpt 
   RestoreManualFile: README.MD
 
-Clean-1cCache:
+Reset-1cJournals:
   LogDirName: 1Cv8Log
   LogArchDirName: 1cLogs
   LogDepth: 90        #Days

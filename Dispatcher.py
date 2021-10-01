@@ -50,15 +50,6 @@ class Summary:
         self.started = 0
         self.finished = 0
 
-# class Result:
-#     def __init__(self) -> None:
-#         self.result = ResType.Ok   # type: ResType
-#         self.total = 0
-#         self.ok = 0
-#         self.error = 0
-#         self.warning = 0
-
-
 class Record:
     def __init__(self , type, data) -> None:
         self.fact_type = type   # type: FactType

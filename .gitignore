@@ -2,7 +2,4 @@
 __pycache__
 *.log*
 test.py
-
-
-config.yml
 config.yml

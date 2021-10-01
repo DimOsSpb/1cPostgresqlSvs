@@ -12,7 +12,7 @@ import shutil
 import fcntl
 import re
 from enum import Enum
-
+from pathlib import Path
 
 from Dispatcher import Dispatcher, FactType, StageType
 
@@ -29,6 +29,7 @@ class TasksID(ExtEnum):
     ReindexSQL = ("Reindex-SQL","Reindex SQL bases")
     VacuumSQL = ("Vacuum-SQL","Vacuum SQL bases")
     BackUp1cExtFiles = ("BackUp-1cExtFiles","BackUp 1c external files")
+    Reset1cJournals = ("Reset-1cJournals","Reset 1c service journals")
     Clean1cCache = ("Clean-1cCache","Clean 1c service cache")
     FSCheck = ("FSCheck","Check FS")
     Restart = ("Restart-1c","Restart 1c Service")
@@ -71,13 +72,14 @@ class Program:
         self.rest_sql_man = ""
         self.rest_files_man_tmp = ""
         self.rest_files_man = ""
-        self.log_dir_name = "1Cv8Log"
-        self.log_arch_dir_name = "Logs"
-        self.log_depth = None #Days
-        self.log_size_max = None    #GB
-        self.log_keep_depth = None #Days
-        self.log_keep_size_max = None    #GB
-        self.log_wait_after = None    #sec
+        self.cache_dir_tmpl = "snccntx*"
+        self.log_1c_dir_name = "1Cv8Log"
+        self.log_1c_arch_dir_name = "Logs"
+        self.log_1c_depth = None #Days
+        self.log_1c_size_max = None    #GB
+        self.log_1c_keep_depth = None #Days
+        self.log_1c_keep_size_max = None    #GB
+        self.log_1c_wait_after = None    #sec
         self.disk_space_usage_warn = None
         self.disk_space_usage_err = None
         self.reboot_time_out = None
@@ -100,7 +102,7 @@ class Program:
         sys.exit(1)
 
 def get_1c_bases_info():
-    # 1CV8Clst.lst содержит id баз - это имена каталогов для чистки
+    # 1CV8Clst.lst реестр кластера 1c - содержит id баз - это имена каталогов для чистки
     bases = []
     try:
         lst = os.path.join(PRG.service_1c_dir, '1CV8Clst.lst') 
@@ -243,23 +245,23 @@ try:
     PRG.rest_files_man_tmp = cfg['BackUp-1cExtFiles']['RestoreManualTmpt']
     PRG.rest_files_man = cfg['BackUp-1cExtFiles']['RestoreManualFile']
 
-    PRG.log_dir_name = cfg['Clean-1cCache']['LogDirName']
-    PRG.log_arch_dir_name = cfg['Clean-1cCache']['LogArchDirName']
-    PRG.log_depth = cfg['Clean-1cCache']['LogDepth']
-    if type(PRG.log_depth) is not int:
-            PRG.log_depth = 90    # Days
-    PRG.log_size_max = cfg['Clean-1cCache']['LogSizeMax']
-    if type(PRG.log_size_max) is not int:
-            PRG.log_size_max = 1000      # MB    
-    PRG.log_keep_depth = cfg['Clean-1cCache']['KeepDepth']
-    if type(PRG.log_keep_depth) is not int:
-            PRG.log_keep_depth = 365    # Days
-    PRG.log_keep_size_max = cfg['Clean-1cCache']['KeepSizeMax']
-    if type(PRG.log_keep_size_max) is not int:
-            PRG.log_keep_size_max = 6000      # MB 
-    PRG.log_wait_after = cfg['Clean-1cCache']['WaitAfter']
-    if type(PRG.log_wait_after) is not int:
-            PRG.log_wait_after = 6000      # MB 
+    PRG.log_1c_dir_name = cfg['Reset-1cJournals']['LogDirName']
+    PRG.log_1c_arch_dir_name = cfg['Reset-1cJournals']['LogArchDirName']
+    PRG.log_1c_depth = cfg['Reset-1cJournals']['LogDepth']
+    if type(PRG.log_1c_depth) is not int:
+            PRG.log_1c_depth = 90    # Days
+    PRG.log_1c_size_max = cfg['Reset-1cJournals']['LogSizeMax']
+    if type(PRG.log_1c_size_max) is not int:
+            PRG.log_1c_size_max = 1000      # MB    
+    PRG.log_1c_keep_depth = cfg['Reset-1cJournals']['KeepDepth']
+    if type(PRG.log_1c_keep_depth) is not int:
+            PRG.log_1c_keep_depth = 365    # Days
+    PRG.log_1c_keep_size_max = cfg['Reset-1cJournals']['KeepSizeMax']
+    if type(PRG.log_1c_keep_size_max) is not int:
+            PRG.log_1c_keep_size_max = 6000      # MB 
+    PRG.log_1c_wait_after = cfg['Reset-1cJournals']['WaitAfter']
+    if type(PRG.log_1c_wait_after) is not int:
+            PRG.log_1c_wait_after = 6000      # MB 
     PRG.disk_space_usage_warn = cfg['FSCheck']['DiskSpaceUsageWarn']
     if type(PRG.disk_space_usage_warn) is not int:
             PRG.disk_space_usage_warn = 75      # %
@@ -488,26 +490,26 @@ if critical_for_1c_tasks_present:
                 DISPATCHER.error(can_t + TasksID.VacuumSQL.title, error)            
             DISPATCHER.finishStage(TasksID.VacuumSQL.id)
 
-        ### 2.2.3 - Clean-1cCache... 
-        if TasksID.Clean1cCache.id in PRG.tasks:
-            DISPATCHER.startStage(TasksID.Clean1cCache.id, TasksID.Clean1cCache.title, StageType.Task)
+        ### 2.2.3 - Reset-1cJournals... 
+        if TasksID.Reset1cJournals.id in PRG.tasks:
+            DISPATCHER.startStage(TasksID.Reset1cJournals.id, TasksID.Reset1cJournals.title, StageType.Task)
             try:
-                # Очистим каталоги всех баз...    
+                # Очистим журналы всех баз...    
                 now = time.time()
-                s_time = time.time() - PRG.log_depth * 86400
-                k_time = time.time() - PRG.log_keep_depth * 86400
+                s_time = time.time() - PRG.log_1c_depth * 86400
+                k_time = time.time() - PRG.log_1c_keep_depth * 86400
                 clean_log = False
                 for l in _1c_bases_info:
                     DISPATCHER.startStage(l['name'], l['name'], StageType.TaskItem, in_line=True)
                     try:                    
                         d = os.path.join(PRG.service_1c_dir, l['id']) 
-                        d = os.path.join(d, PRG.log_dir_name) 
+                        d = os.path.join(d, PRG.log_1c_dir_name) 
                         if os.path.isdir(d):
                             # Сожраним удаляемый журнал...
                             log_arch_dir = os.path.join(PRG.backup_dir, l['name'])
                             if not os.path.exists(log_arch_dir):
                                 os.makedirs(log_arch_dir)
-                            log_arch_dir = os.path.join(log_arch_dir, PRG.log_arch_dir_name)
+                            log_arch_dir = os.path.join(log_arch_dir, PRG.log_1c_arch_dir_name)
                             if not os.path.exists(log_arch_dir):
                                 os.makedirs(log_arch_dir)
                             time_stamp = datetime.datetime.now().strftime("%d%m%Y%H%M_1cLog")
@@ -515,7 +517,7 @@ if critical_for_1c_tasks_present:
 
                             dir_time = os.stat(d).st_mtime 
                             dir_size = get_size(d)
-                            if dir_time < s_time or dir_size >= PRG.log_size_max*1048576:  # Megabytes -> Bytes
+                            if dir_time < s_time or dir_size >= PRG.log_1c_size_max*1048576:  # Megabytes -> Bytes
                                 clean_log = True
                             if clean_log:
                                 # tar -cvf archive.tar.gz /path/to/files
@@ -525,8 +527,22 @@ if critical_for_1c_tasks_present:
                             # Чистим старые архивы логов
                             del_old(log_arch_dir, k_time, files = True )
                     except Exception as error:
-                        DISPATCHER.error(can_t + TasksID.Clean1cCache.title, error)                          
+                        DISPATCHER.error(can_t + TasksID.Reset1cJournals.title, error)                          
                     DISPATCHER.finishStage(l['name'])
+            except Exception as error:
+                    DISPATCHER.error(can_t + TasksID.Reset1cJournals.title, error) 
+            DISPATCHER.finishStage(TasksID.Reset1cJournals.id)
+
+        ### 2.2.4 - Clean-1cCache... 
+        if TasksID.Clean1cCache.id in PRG.tasks:
+            DISPATCHER.startStage(TasksID.Clean1cCache.id, TasksID.Clean1cCache.title, StageType.Task, in_line=True)
+            try:
+                path = Path(PRG.service_1c_dir)                        
+                for c_dir in path.glob(PRG.cache_dir_tmpl):              
+                    if c_dir.is_dir():
+                        for c_file in c_dir.glob('*.dat'):              
+                            if c_file.is_file():
+                                c_file.unlink()
             except Exception as error:
                     DISPATCHER.error(can_t + TasksID.Clean1cCache.title, error) 
             DISPATCHER.finishStage(TasksID.Clean1cCache.id)
@@ -534,8 +550,8 @@ if critical_for_1c_tasks_present:
         # Start 1c?...
         if not TasksID.Reboot.id in PRG.tasks:  # Будем перегружать систему в конце? Не стартуем 1с - если да
 
-            DISPATCHER.startStage(AdaptTasksID.Wait.id, AdaptTasksID.Wait.title.format(PRG.log_wait_after), StageType.Assist, in_line=True)
-            time.sleep(PRG.log_wait_after)  # Первый раз что-то пошло не так, 1с пришлось перезагружать, есть подозрение - дать время ...
+            DISPATCHER.startStage(AdaptTasksID.Wait.id, AdaptTasksID.Wait.title.format(PRG.log_1c_wait_after), StageType.Assist, in_line=True)
+            time.sleep(PRG.log_1c_wait_after)  # Первый раз что-то пошло не так, 1с пришлось перезагружать, есть подозрение - дать время ...
             DISPATCHER.finishStage(AdaptTasksID.Wait.id)
 
             DISPATCHER.startStage(AdaptTasksID.Start1с.id, AdaptTasksID.Start1с.title, StageType.Assist, in_line=True)
