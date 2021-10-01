@@ -1,60 +1,58 @@
 Description: 1cPGSQL maintenance
 Host: 192.168.0.29
-SQLUserName: postgres
-1cServiceName: srv1cv83
-1cServiceDir: /home/usr1cv8/.1cv8/1C/1cv8/reg_1541
+SQLUserName: postgres     # Имя пользователя Postgresql
+1cServiceName: srv1cv83   # Имя сервиса 1с
 PGServiceName: postgresql
-BackUp:
-  Dir: /mnt/pg_arch/ARCH
+1cServiceDir: /home/usr1cv8/.1cv8/1C/1cv8/reg_1541  # Каталог где сервер хранит информации по базам
+BackUp:                   
+  Dir: /mnt/pg_arch/ARCH  # Раздел для архивов
 Do:
-  - BackUp-SQL
-  # - Reindex-SQL
+  - BackUp-SQL            # Реализованные в программе таски
+  # - Reindex-SQL           # Не трудно понять их смысл, подробней в 1cPSQLServ.py
   # - Vacuum-SQL
   - BackUp-1cExtFiles
-  - Reset-1cJournals
-  # - Clean-1cCache
+  - Reset-1cJournals      # Удаляем в архив журналы 1c...
+  - Clean-1cCache         # Удаляем кеш 1с сервера  (/snccntx*/*.dat)
   - FSCheck
   # - Reboot
-BackUp-SQL:
-  Depth: 7 #Days
-  KeepQuantity: 10 #Archives
-  RestoreManualTmpt: RestSQLManl.tmpt 
-  RestoreManualFile: README.MD
-BackUp-Bases:
-  - "GILV"
-  # - "%ERP%"
-  # - "%BUH%"
+BackUp-SQL:                           # По имени задач выше, параметры задач
+  Depth: 7                            # Days - Хранить архивы баз X дней
+  KeepQuantity: 10                    # Archives - Хранить минимум Х архивов (не трогать при удалении устаревших по настройке выше)
+  RestoreManualTmpt: RestSQLManl.tmpt # Шаблон для инструкций 
+  RestoreManualFile: README.MD        # Имя файла инструкций (ляжет в каталог с архивом базы, содержит описание и команды для восстановления)
+BackUp-Bases:                         
+  - "GILV"                            # Какие базы архивировать в Раздел для архивов
+  # - "%ERP%"                         # Aрхивы SQL лягут в папку с именем базы в виде каталога с шифром даты-времени-версии_архива.
+  # - "%BUH%"                         
   # - "%UPP%"
   # - "%ZUP%"
   # - "%ARCH%"
-  #- "%KA-%" 
-
+  - "%KA-%"  
 BackUp-1cExtFiles:
-  # Dir: /mnt/pg_arch/ARCH
-  1cExtFilesDir: /mnt/1cdata
-  Depth: 60 #Days
-  RestoreManualTmpt: RestFilesManl.tmpt 
-  RestoreManualFile: README.MD
-
-Reset-1cJournals:
-  LogDirName: 1Cv8Log
-  LogArchDirName: 1cLogs
-  LogDepth: 90        #Days
-  LogSizeMax: 1000    #MB
-  KeepDepth: 365      #Days
-  KeepSizeMax: 6000   #MB
-  WaitAfter: 30       #sec
+  1cExtFilesDir: /mnt/1cdata          # Внешние файлы 1с. Каталоги с именами как у баз. Т.е. если база имеет имя ERP-A, то и прикрепленные файлы должны лежать в /mnt/1cdata/ERP-A.
+  Depth: 60 #Days                     # Глубина хранения изменений
+  RestoreManualTmpt: RestFilesManl.tmpt # Шаблон для инструкций 
+  RestoreManualFile: README.MD          # Имя файла инструкций (ляжет в каталог с архивом базы, содержит описание и команды для восстановления)
+                    
+Reset-1cJournals:                     # Удаляем в архив журналы...
+  LogDirName: 1Cv8Log                 # Логи 1с перенесутся в папку с именем базы в виде каталога LogArchDirName, как сжатый файл с шифром даты-времени.
+  LogArchDirName: 1cLogs              # Имя каталога для архивов журналов 1с в каталоге архивов базы
+  LogDepth: 90        #Days           # Если дата каталога LogDirName станет старее LogDepth, журнал удалится в архив. 
+  LogSizeMax: 1000    #MB             # Если размер каталога LogDirName станет больше LogSizeMax, журнал удалится в архив. 
+  KeepDepth: 365      #Days           # Хранить архивы X дней
+  KeepSizeMax: 6000   #MB             # Не больше такого размера
+  WaitAfter: 15       #sec            # Пауза после 
 
 FSCheck:
-  DiskSpaceUsageWarn: 75 #%
-  DiskSpaceUsageErr: 90 #%
+  DiskSpaceUsageWarn: 60 #%           # Для одноименной задачи, порог предупреждения заполнения томов.
+  DiskSpaceUsageErr: 90 #%            # Для одноименной задачи, порог критического заполнения томов.
 
 Reboot:
-  TimeOut: 2  #min
+  TimeOut: 2  #min                    # Задержка перезагрузки для успешного завершения скрипта 
 
 log:
-  file: "/opt/serv/serv.log"
-  con: true 
+  file: "/opt/serv/serv.log"          # Куда логи пишем
+  con: true                           # Вывод в консоль
   telegram:
     token:
     channel_id:
