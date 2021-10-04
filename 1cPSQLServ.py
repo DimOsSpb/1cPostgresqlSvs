@@ -53,19 +53,21 @@ class Program:
         self.name = TasksID.Main.title
         self.is_1c_stopped = False
         self.host = "localhost"
-        self.bases_pattern = ""
         self.sql_username = ""
         self.name_1cService = ""
         self.service_1c_dir = ""
         self.name_PGService = ""
         self.description = ""
         self.tasks = None
-        self.bases = []
+        self.sql_buckup_bases_pattern = ""
+        self.sql_backup_bases = []
         self.pgVer = None
         self.backup_dir = ""
         self.backup_depth = None
         self.backup_quantity = None
         self.backup_files_depth = None
+        self.ext_1c_files_bases_pattern = ""
+        self.ext_1c_files_bases = []
         self.ext_1c_files_dir = ""
         self.ext_1c_buckup_files_dir = ["1cExtFiles","files"]
         self.rest_sql_man_tmp = ""
@@ -228,7 +230,7 @@ try:
     PRG.tasks = cfg['Do']
     DISPATCHER.total_tasks = len(PRG.tasks)
     PRG.backup_dir = cfg['BackUp']['Dir']
-    PRG.bases_pattern = cfg['BackUp-Bases']
+    PRG.sql_buckup_bases_pattern = cfg['BackUp-SQL']['Bases']
     PRG.backup_depth = cfg['BackUp-SQL']['Depth']
     if type(PRG.backup_depth) is not int:
             PRG.backup_depth = 10
@@ -238,6 +240,7 @@ try:
     PRG.rest_sql_man_tmp = cfg['BackUp-SQL']['RestoreManualTmpt']
     PRG.rest_sql_man = cfg['BackUp-SQL']['RestoreManualFile']
 
+    PRG.ext_1c_files_bases_pattern = cfg['BackUp-1cExtFiles']['Bases']
     PRG.ext_1c_files_dir = cfg['BackUp-1cExtFiles']['1cExtFilesDir']
     PRG.backup_files_depth = cfg['BackUp-1cExtFiles']['Depth']
     if type(PRG.backup_files_depth) is not int:
@@ -292,10 +295,16 @@ except Exception as e:
 ## 1.4 Считаем базы по шаблонам из Postgresql
 
 try:
-    select_bases = "SELECT datname FROM pg_database WHERE datname LIKE ANY(ARRAY" + str(PRG.bases_pattern) + ")"
+    # for sql bases backup...
+    select_bases = "SELECT datname FROM pg_database WHERE datname LIKE ANY(ARRAY" + str(PRG.sql_buckup_bases_pattern) + ")"
     process = subprocess.run(['psql', '-U',PRG.sql_username,'--tuples-only','-P','format=unaligned','-c',select_bases], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     output = process.stdout.decode('utf-8')
-    PRG.bases = output.splitlines()
+    PRG.sql_backup_bases = output.splitlines()
+    # for 1c bases ext files...
+    select_bases = "SELECT datname FROM pg_database WHERE datname LIKE ANY(ARRAY" + str(PRG.ext_1c_files_bases_pattern) + ")"
+    process = subprocess.run(['psql', '-U',PRG.sql_username,'--tuples-only','-P','format=unaligned','-c',select_bases], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    output = process.stdout.decode('utf-8')
+    PRG.ext_1c_files_bases = output.splitlines()
 except Exception as e:
     DISPATCHER.error(can_t + "get SQL bases: {}", e)
 
@@ -307,7 +316,7 @@ except Exception as e:
   
 if TasksID.BackUpSQL.id in PRG.tasks: 
     DISPATCHER.startStage(TasksID.BackUpSQL.id, TasksID.BackUpSQL.title, StageType.Task)
-    for cur_base in PRG.bases:
+    for cur_base in PRG.sql_backup_bases:
         DISPATCHER.startStage(cur_base, cur_base, StageType.TaskItem, in_line=True)
         try:
            
@@ -374,6 +383,8 @@ if TasksID.BackUp1cExtFiles.id in PRG.tasks:
     DISPATCHER.startStage(TasksID.BackUp1cExtFiles.id, TasksID.BackUp1cExtFiles.title, StageType.Task)
     for base_info in _1c_bases_info:
         cur_base = base_info['name']
+        if not cur_base in PRG.ext_1c_files_bases:
+            continue
         DISPATCHER.startStage(cur_base, cur_base, StageType.TaskItem, in_line=True)
         try:
             cur_stage_stop = False
@@ -464,7 +475,7 @@ if critical_for_1c_tasks_present:
         if TasksID.ReindexSQL.id in PRG.tasks:
             DISPATCHER.startStage(TasksID.ReindexSQL.id, TasksID.ReindexSQL.title, StageType.Task)
             try:
-                for cur_base in PRG.bases:
+                for cur_base in PRG.sql_backup_bases:
                     DISPATCHER.startStage(cur_base, cur_base, StageType.TaskItem, in_line=True)
                     try:
                         process = subprocess.run(['reindexdb','-U',PRG.sql_username,'-d',cur_base,'-w'], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -479,7 +490,7 @@ if critical_for_1c_tasks_present:
         if TasksID.VacuumSQL.id in PRG.tasks:
             DISPATCHER.startStage(TasksID.VacuumSQL.id, TasksID.VacuumSQL.title, StageType.Task)
             try:
-                for cur_base in PRG.bases:
+                for cur_base in PRG.sql_backup_bases:
                     DISPATCHER.startStage(cur_base, cur_base, StageType.TaskItem, in_line=True)
                     try:
                         process = subprocess.run(['vacuumdb','-U',PRG.sql_username,'-d',cur_base,'-f','-z','-w'], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
