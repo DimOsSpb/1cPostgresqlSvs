@@ -24,6 +24,7 @@ class ExtEnum(Enum):
 
 class TasksID(ExtEnum):
     Main = ("Main","1c&PostgreSQL Maintenance V0.1")
+    MountVolumes = ("MountVolumes","Remount all volumes according to /etc/fstab")
     BackUpSQL = ("BackUp-SQL","BuckUp SQL bases")
     BackUpSQL_Base = ("BackUpSQL_Base","BuckUp SQL base")
     ReindexSQL = ("Reindex-SQL","Reindex SQL bases")
@@ -311,6 +312,16 @@ except Exception as e:
 # 2. Выполнение задач
 
 ## 2.1 В начале задачи, которые не требуют остановки 1с
+
+### 2.1.0 - Смонтируем все тома по fstab, т.к. были случаи отключения ресурсов, здесь попытка восстановить 
+if TasksID.MountVolumes.id in PRG.tasks: 
+    DISPATCHER.startStage(TasksID.MountVolumes.id, TasksID.MountVolumes.title, StageType.Task, in_line=True)
+    try:
+        process = subprocess.run(['mount','-a'], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    except Exception as error:
+        DISPATCHER.error(can_t + TasksID.MountVolumes.title, error)            
+    DISPATCHER.finishStage(TasksID.MountVolumes.id)
+
 
 ### 2.1.1 - BuckUp-SQL указанные в pgBases базы
   
