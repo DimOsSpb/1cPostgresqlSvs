@@ -418,7 +418,7 @@ if TasksID.BackUp1cExtFiles.id in PRG.tasks:
 
             # Копируем... 
             # rsync -a --delete --quiet --inplace --backup --backup-dir=$FILES1C_INC_BACKUP_DIR $FILES1C_SOURCE $FILES1C_BACKUP_DIR
-            process = subprocess.run(['rsync','-a','--delete','--quiet','--inplace','--backup','--backup-dir='+files1c_inc_backup_dir, files1c_source, files1c_backup_dir], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            process = subprocess.run(['rsync','-a','--chmod=ugo=rw','--delete','--quiet','--inplace','--perms','--backup','--backup-dir='+files1c_inc_backup_dir, files1c_source, files1c_backup_dir], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         except WarnException as e:
             DISPATCHER.warning(str(e))   
             cur_stage_stop = True
