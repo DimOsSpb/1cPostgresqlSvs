@@ -85,6 +85,7 @@ class Dispatcher:
             self.telegram.channel_id = conf['telegram']['channel_id']
             self.current = None         # type: Stage
             self.ok = True
+            self.new_line = False
         except Exception as e:
             self.ok = False
             print("Logger init error: {}".format(e))
@@ -203,15 +204,18 @@ class Dispatcher:
     def exit(self, mesg):
         self.reg(FactType.Exit, mesg)
 
-    def warning(self, mesg):
-        self.reg(FactType.WARNING, mesg)
+    def warning(self, mesg, new_line: bool = False):
+        self.reg(FactType.WARNING, mesg, new_line=new_line)
 
-    def error(self, mesg, e = ""):
-        self.reg(FactType.ERROR, "{}{}".format(mesg,": "+str(e) if e != "" else ""))
+    def error(self, mesg, e = "", new_line: bool = False):
+        self.reg(FactType.ERROR, "{}{}".format(mesg,": "+str(e) if e != "" else ""), new_line=new_line)
 
     def reg(self, mType: FactType, mesg: str = "", level: int = 0, in_line: bool = False, new_line: bool = False, stage: Stage = None, stage_type: StageType = StageType.Undef):
         # Запишем событие
         _in_line = in_line
+        _mesg = ""
+        mes_tab = ""
+        mes_sep = ""
         if stage != None:
             # mesg = stage.description
             level = stage.level
@@ -227,10 +231,10 @@ class Dispatcher:
             if stage == None:
                 _in_line = self.current.in_line
         if self.ok:
-            if new_line:
-                _mesg = "\n"
+            if not _in_line or mType == FactType.Finish or new_line or self.new_line:
+                _end = "\n"
             else:    
-                _mesg = ""
+                _end = ""
             if mType == FactType.Line:
                 _mesg += "   " * level + "-" * 25 + "\n"
             elif mType == FactType.Report:
@@ -243,19 +247,28 @@ class Dispatcher:
                 _time = datetime.datetime.now().strftime("%d/%m/%y %H:%M")
                 if (mType == FactType.Start or mType == FactType.WARNING or mType == FactType.ERROR) and _in_line:
                     mes_sep = " ... "
-                else:
-                    mes_sep = "\n"
+                    if new_line:
+                        if self.current != None and len(self.stages) > 0:
+                            _stage = self.current
+                            level = _stage.level+1
+                            if not self.new_line:
+                                mes_tab = "\n"
+                            self.new_line = True
 
+
+                mes_tab += "   " * level
                 if mType == FactType.Finish and _in_line:
-                    mes_tab = ""
-                    type_sep = " "
-                    stage_text = ""
+                    if not self.new_line:
+                        mes_tab = ""
+                        type_sep = " "
+                        stage_text = ""
+                    self.new_line = False
                     # _mesg_text = ""
-                else:
-                    mes_tab = "   " * level
-                _mesg += "{}{} {}{}{}{}{}".format(mes_tab, _time, _mTypeName, stage_text, type_sep, _mesg_text, mes_sep)
+                    
+                _mesg += "{}{} {}{}{}{}{}{}".format(mes_tab, _time, _mTypeName, stage_text, type_sep, _mesg_text,mes_sep, _end)
 
             if self.file:
+                self.last_print_len = len(_mesg)
                 self.file.write(_mesg)
                 self.file.flush()
             if self.con:
