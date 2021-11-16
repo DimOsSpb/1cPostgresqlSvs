@@ -144,6 +144,30 @@ def get_size(start_path='.'):
             total_size += stat.st_size
     return total_size
 
+def max_file(start_path: str):     
+    # Соберем и отсортируем ...
+    
+    _max = {'path': '', 'size': 0}
+    seen = {}
+    for dirpath, dirnames, filenames in os.walk(start_path):
+        if not os.path.ismount(dirpath) or dirpath == start_path:
+            for f in filenames:
+                fp = os.path.join(dirpath, f)
+                try:
+                    stat = os.lstat(fp) # По символическим ссылкам не считаем
+                except OSError:
+                    continue
+                try:
+                    seen[stat.st_ino]   # Избегаем повторного расчета
+                except KeyError:
+                    seen[stat.st_ino] = True
+                else:
+                    continue
+                insert_index = 0
+                if _max['size'] < stat.st_size:
+                        _max = {'path': fp, 'size': stat.st_size}
+    return _max
+
 def checkFS(max_percent_warn: int, max_percent_err: int, top_size_lines: int = 3):
     process = subprocess.run(['df'], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     output = process.stdout.decode('utf-8')   
@@ -154,18 +178,21 @@ def checkFS(max_percent_warn: int, max_percent_err: int, top_size_lines: int = 3
     for i in range(len(df_n)):
         n = int(df_n[i]) 
         if n > max_percent_warn:       
+            max_f = max_file(df_f[i])
             data = {}
             data['name'] =  df_f[i]
             data['value'] = n
+            if max_f['size'] > 0: 
+                data['max_file'] = '{}MB {}'.format(max_f['size']/1024**2,max_f['path'])
+            else:
+                data['max_file'] = ''
             vols.append(data)
             if n > max_percent_err:       
                 err = True
     if len(vols) > 0:
-        process = subprocess.run(['/bin/sh','-c','du -aSxh / | sort -h -r | head -n '+str(top_size_lines)], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)   
-        output = process.stdout.decode('utf-8')   
-        return 2 if err else 1, vols, output
+        return 2 if err else 1, vols
     else:
-        return False, [], ""
+        return False, []
 
 def del_old(files_dir: str, old_time: float, exclude_list: list = [], first_chars_in_name: str = None, files = False, dirs = False, backup_quantity = 0):     
     # Соберем и отсортируем нужные каталоги...
@@ -298,12 +325,12 @@ except Exception as e:
 try:
     # for sql bases backup...
     select_bases = "SELECT datname FROM pg_database WHERE datname LIKE ANY(ARRAY" + str(PRG.sql_buckup_bases_pattern) + ")"
-    process = subprocess.run(['psql', '-U',PRG.sql_username,'--tuples-only','-P','format=unaligned','-c',select_bases], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    process = subprocess.run(['psql','-h',PRG.host, '-U',PRG.sql_username,'--tuples-only','-P','format=unaligned','-c',select_bases], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     output = process.stdout.decode('utf-8')
     PRG.sql_backup_bases = output.splitlines()
     # for 1c bases ext files...
     select_bases = "SELECT datname FROM pg_database WHERE datname LIKE ANY(ARRAY" + str(PRG.ext_1c_files_bases_pattern) + ")"
-    process = subprocess.run(['psql', '-U',PRG.sql_username,'--tuples-only','-P','format=unaligned','-c',select_bases], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    process = subprocess.run(['psql','-h',PRG.host,'-U',PRG.sql_username,'--tuples-only','-P','format=unaligned','-c',select_bases], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     output = process.stdout.decode('utf-8')
     PRG.ext_1c_files_bases = output.splitlines()
 except Exception as e:
@@ -347,10 +374,10 @@ if TasksID.BackUpSQL.id in PRG.tasks:
                 os.makedirs(cur_buckup_dir)
 
             # Выгружаем исключая конфигурацию 1с
-            process = subprocess.run(['pg_dump','-U',PRG.sql_username,'-Fc','--exclude-table-data=config', "--file="+cur_buckup_file, cur_base], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            process = subprocess.run(['pg_dump','-h',PRG.host,'-U',PRG.sql_username,'-Fc','--exclude-table-data=config', "--file="+cur_buckup_file, cur_base], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
             # Отдельно выгружаем конфигурацию
-            process = subprocess.run(['psql','--username='+PRG.sql_username,'-E','-d', cur_base,'-c', "COPY public.config TO \'"+cur_buckup_file_config+"\' WITH BINARY;"], check=True ,stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            process = subprocess.run(['psql','-h',PRG.host,'-U',PRG.sql_username,'-E','-d', cur_base,'-c', "COPY public.config TO \'"+cur_buckup_file_config+"\' WITH BINARY;"], check=True ,stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
                 #sql = '"COPY public.config TO \'"+cur_buckup_file_config+"\' WITH BINARY;"'
                 #process = subprocess.run(['psql','--username=postgres','-E','-d', cur_base,'-c', '{}'.format(sql)], check=True ,stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -600,11 +627,14 @@ if critical_for_1c_tasks_present:
 if TasksID.FSCheck.id in PRG.tasks:
     DISPATCHER.startStage(TasksID.FSCheck.id, TasksID.FSCheck.title, StageType.Check, in_line=True)
     try:
-        res, vols, info = checkFS(PRG.disk_space_usage_warn, PRG.disk_space_usage_err, 1)
-        if res == 1:
-            DISPATCHER.warning("volume: '{}' - used more than {}%, max -> {}".format(vols[0]['name'], vols[0]['value'], info.replace('\n','')))
-        elif res == 2:
-            DISPATCHER.error("volume: '{}' - used more than {}%, max -> {}".format(vols[0]['name'], vols[0]['value'], info.replace('\n','')))
+        res, vols = checkFS(PRG.disk_space_usage_warn, PRG.disk_space_usage_err, 1)
+        if res:
+            for vol in vols:
+                mesg = "volume: '{}' - used more than {}%, max file -> {}".format(vol['name'], vol['value'], vol['max_file'])
+                if res == 1:
+                    DISPATCHER.warning(mesg, new_line=True)
+                elif res == 2:
+                    DISPATCHER.error(mesg, new_line=True)
     except Exception as error:
         DISPATCHER.error(can_t + TasksID.FSCheck.title, error)
     DISPATCHER.finishStage(TasksID.FSCheck.id)

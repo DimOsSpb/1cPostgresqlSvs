@@ -85,6 +85,7 @@ class Dispatcher:
             self.telegram.channel_id = conf['telegram']['channel_id']
             self.current = None         # type: Stage
             self.ok = True
+            self.new_line = False
         except Exception as e:
             self.ok = False
             print("Logger init error: {}".format(e))
@@ -100,7 +101,7 @@ class Dispatcher:
         else:
             stage.start_time = datetime.datetime.now()
         stage.in_line = in_line
-        # РќРѕРІС‹Р№ СЌС‚Р°Рї СЃС‚Р°РЅРѕРІРёС‚СЊСЃСЏ СЂРµР±РµРЅРєРѕРј РїСЂРµРґС‹РґСѓС‰РµРіРѕ (РЅРµ Р·Р°РєРѕРЅС‡РµРЅРЅРѕРіРѕ) СЌС‚Р°РїР°
+        # Новый этап становиться ребенком предыдущего (не законченного) этапа
         if len(self.stages) > 0:
             stage.parent = self.current
             stage.level = self.current.level+1
@@ -123,7 +124,7 @@ class Dispatcher:
                 self.current = value.parent
 
     def __getResultOfLevel(self,stage: Stage) -> Summary:
-        # РЎС‡РёС‚Р°РµРј СЃРІРѕРё records:
+        # Считаем свои records:
         res = Summary(stage.id)
         for record in stage.records:
             if record.fact_type == FactType.ERROR or record.fact_type == FactType.Exit:
@@ -134,11 +135,11 @@ class Dispatcher:
                 res.warning += 1
             elif record.fact_type == FactType.Finish:
                 res.finished += 1
-        # Р”Р°Р»РµРµ СЂРµРєСѓСЂСЃРёРІРЅРѕ СЃС‡РёС‚Р°РµРј РІСЃСЋ РІРµС‚РІСЊ..
+        # Далее рекурсивно считаем всю ветвь..
         for child in stage.children:
             sub_res = self.__getResultOfLevel(child)
             res.total += 1
-            # Р Р°СЃС‡РµС‚ РґР»СЏ Р·Р°РґР°РЅРЅС‹С… Р·Р°РґР°С‡ РѕС‚РґРµР»СЊРЅС‹Р№ (total = all)
+            # Расчет для заданных задач отдельный (total = all)
             if child.type == StageType.Task or child.type == StageType.TaskItem or child.type == StageType.Check:
                 res.tasks += 1
                 if sub_res.result == ResType.OK:
@@ -155,19 +156,19 @@ class Dispatcher:
 
     def report(self, description: str = "", telegram: bool = False):
 
-        # РћР±С…РѕРґ РІСЃРµС… Р·Р°РїРёСЃРµР№ РІ РґРµСЂРµРІРµ СЌС‚Р°РїРѕРІ РґР»СЏ С„РѕСЂРјРёСЂРѕРІР°РЅРёСЏ СЂРµР·СѓР»СЊС‚Р°С‚РѕРІ, Рё СЃРІРѕРґР° РёС… Рє РєРѕСЂРЅСЋ:
+        # Обход всех записей в дереве этапов для формирования результатов, и свода их к корню:
         main_stage = self.stages[0]
         res = self.__getResultOfLevel(main_stage)
 
-        # РќР°Р·РІР°РЅРёРµ, РѕР±С‰РёР№ СЂРµР·СѓР»СЊС‚Р°С‚
+        # Название, общий результат
         tmpl = "{0}: {b}{1}{be}\n"
         mesg_l = tmpl.format(description, res.result.name, b="", be="")
         mesg_t = tmpl.format(description, res.result.name, b="<b>",be="</b>")
-        # РџР»Р°РЅ
+        # План
         tmpl = "Total planned {b}{0}{be} tasks.\n"
         mesg_l += tmpl.format(self.total_tasks, b="", be="")
         mesg_t += tmpl.format(self.total_tasks, b="<b>",be="</b>")
-        # Р¤Р°РєС‚:
+        # Факт:
         tmpl = "Successfully completed {b}{0}{be} tasks.\n"
         mesg_l += tmpl.format(res.ok, b="", be="")
         mesg_t += tmpl.format(res.ok, b="<b>",be="</b>")
@@ -203,15 +204,18 @@ class Dispatcher:
     def exit(self, mesg):
         self.reg(FactType.Exit, mesg)
 
-    def warning(self, mesg):
-        self.reg(FactType.WARNING, mesg)
+    def warning(self, mesg, new_line: bool = False):
+        self.reg(FactType.WARNING, mesg, new_line=new_line)
 
-    def error(self, mesg, e = ""):
-        self.reg(FactType.ERROR, "{}{}".format(mesg,": "+str(e) if e != "" else ""))
+    def error(self, mesg, e = "", new_line: bool = False):
+        self.reg(FactType.ERROR, "{}{}".format(mesg,": "+str(e) if e != "" else ""), new_line=new_line)
 
     def reg(self, mType: FactType, mesg: str = "", level: int = 0, in_line: bool = False, new_line: bool = False, stage: Stage = None, stage_type: StageType = StageType.Undef):
-        # Р—Р°РїРёС€РµРј СЃРѕР±С‹С‚РёРµ
+        # Запишем событие
         _in_line = in_line
+        _mesg = ""
+        mes_tab = ""
+        mes_sep = ""
         if stage != None:
             # mesg = stage.description
             level = stage.level
@@ -227,10 +231,10 @@ class Dispatcher:
             if stage == None:
                 _in_line = self.current.in_line
         if self.ok:
-            if new_line:
-                _mesg = "\n"
+            if not _in_line or mType == FactType.Finish or new_line or self.new_line:
+                _end = "\n"
             else:    
-                _mesg = ""
+                _end = ""
             if mType == FactType.Line:
                 _mesg += "   " * level + "-" * 25 + "\n"
             elif mType == FactType.Report:
@@ -243,19 +247,28 @@ class Dispatcher:
                 _time = datetime.datetime.now().strftime("%d/%m/%y %H:%M")
                 if (mType == FactType.Start or mType == FactType.WARNING or mType == FactType.ERROR) and _in_line:
                     mes_sep = " ... "
-                else:
-                    mes_sep = "\n"
+                    if new_line:
+                        if self.current != None and len(self.stages) > 0:
+                            _stage = self.current
+                            level = _stage.level+1
+                            if not self.new_line:
+                                mes_tab = "\n"
+                            self.new_line = True
 
+
+                mes_tab += "   " * level
                 if mType == FactType.Finish and _in_line:
-                    mes_tab = ""
-                    type_sep = " "
-                    stage_text = ""
+                    if not self.new_line:
+                        mes_tab = ""
+                        type_sep = " "
+                        stage_text = ""
+                    self.new_line = False
                     # _mesg_text = ""
-                else:
-                    mes_tab = "   " * level
-                _mesg += "{}{} {}{}{}{}{}".format(mes_tab, _time, _mTypeName, stage_text, type_sep, _mesg_text, mes_sep)
+                    
+                _mesg += "{}{} {}{}{}{}{}{}".format(mes_tab, _time, _mTypeName, stage_text, type_sep, _mesg_text,mes_sep, _end)
 
             if self.file:
+                self.last_print_len = len(_mesg)
                 self.file.write(_mesg)
                 self.file.flush()
             if self.con:
