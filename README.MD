@@ -156,7 +156,7 @@ nano /root/.pgpass
 
 И пишем в моем случае:
 
-localhost:*:*:postgres:xxxxxxxxxxxxxx
+localhost: * : * :postgres:xxxxxxxxxxxxxx
 
 В общем случае формат его такой:
 
