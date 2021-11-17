@@ -1,7 +1,7 @@
 Description: 1cPGSQL maintenance
 Host: localhost
-SQLUserName: postgres     # Имя пользователя Postgresql
-1cServiceName: srv1cv83   # Имя сервиса 1с
+SQLUserName: postgres             # Имя пользователя Postgresql
+1cServiceName: srv1cv83@current   # Имя сервиса 1с
 PGServiceName: postgresql
 1cServiceDir: /home/usr1cv8/.1cv8/1C/1cv8/reg_1541  # Каталог где сервер хранит информации по базам
 BackUp:                   
