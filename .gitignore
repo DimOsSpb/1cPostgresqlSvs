@@ -1,8 +1,10 @@
 *
+!.gitignore
 !README.MD
-!hosts
+!hosts.yml
 !site.yml
+!group_vars
 !group_vars/all.yml
 !group_vars/mons.yml
 !group_vars/osds.yml
-
+roles/ceph-validate/tasks/check_devices.yml
