@@ -33,6 +33,7 @@ class TasksID(ExtEnum):
     Reset1cJournals = ("Reset-1cJournals","Reset 1c service journals")
     Clean1cCache = ("Clean-1cCache","Clean 1c service cache")
     FSCheck = ("FSCheck","Check FS")
+    SwapOff =  ("SwapOff","Swap Off")
     Restart = ("Restart-1c","Restart 1c Service")
     Reboot = ("Reboot","Reboot the system")
     Stage_SafeFor1с = ("Stage_SafeFor1с","Stage when stopped 1c service")
@@ -639,7 +640,19 @@ if TasksID.FSCheck.id in PRG.tasks:
         DISPATCHER.error(can_t + TasksID.FSCheck.title, error)
     DISPATCHER.finishStage(TasksID.FSCheck.id)
 
-### 2.4 - Reboot... 
+### 2.4 - Finish Assist...
+
+if TasksID.SwapOff.id in PRG.tasks:
+    DISPATCHER.startStage(TasksID.SwapOff.id, TasksID.SwapOff.title, StageType.Assist, in_line=True)
+    try:
+        process = subprocess.run(['swapoff','-a'],stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if process.returncode:
+            raise Exception(str(process.stderr))
+    except Exception as error:
+        DISPATCHER.error(can_t + TasksID.SwapOff.title, error)
+    DISPATCHER.finishStage(TasksID.SwapOff.id)
+
+### 2.5 - Reboot... 
 if TasksID.Reboot.id in PRG.tasks:
     DISPATCHER.startStage(TasksID.Reboot.id, TasksID.Reboot.title, StageType.Task)
     try:

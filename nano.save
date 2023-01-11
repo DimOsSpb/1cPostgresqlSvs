@@ -1,0 +1,19 @@
+        # заглавными буквами
+   realm = DOMAIN.RU         # заглавными буквами
+ 
+   security = ADS            # авторизация через Active Directory
+   encrypt passwords = true  # с шифрованием паролей
+ 
+   dns proxy = no 
+   socket options = TCP_NODELAY
+ 
+   domain master = no        # этот блок настроек указывает, что мы не главные в домене
+   local master = no
+   preferred master = no
+   os level = 0
+   domain logons = no
+ 
+   load printers = no        # принтерами управлять не будем
+   show add printer wizard = no
+   printcap name = /dev/null
+   disable spoolss = yes
